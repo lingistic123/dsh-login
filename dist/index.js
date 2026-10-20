@@ -683,7 +683,16 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   // probe — commands listing and the Cordis manifest sync probe.
   "console",
   "commands.list",
-  "dynamicCordisRunner.syncInspectManifest"
+  "dynamicCordisRunner.syncInspectManifest",
+  // Second deny-log sweep (live wall output): the backflow overlay's own
+  // channel plus the harness wire methods the console/skills panels drive
+  // for ordinary users.
+  "backflow",
+  "dynamicCordisRunner.inventory",
+  "permissionPresets.catalog",
+  "schedule.catalog",
+  "schedule.list",
+  "messageFeedback.list"
 ]);
 
 // src/capabilities.ts

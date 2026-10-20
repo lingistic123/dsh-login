@@ -130,6 +130,15 @@ export const USER_ALLOWED: ReadonlySet<string> = new Set([
   'console',
   'commands.list',
   'dynamicCordisRunner.syncInspectManifest',
+  // Second deny-log sweep (live wall output): the backflow overlay's own
+  // channel plus the harness wire methods the console/skills panels drive
+  // for ordinary users.
+  'backflow',
+  'dynamicCordisRunner.inventory',
+  'permissionPresets.catalog',
+  'schedule.catalog',
+  'schedule.list',
+  'messageFeedback.list',
 ])
 
 /** May an ordinary (non-admin) user call this wire method? (Information surface only.) */
