@@ -43,11 +43,11 @@ dsh-login 0.3.5 起，普通用户的 `/api` 流量全部过桥墙（`src/api-br
 
 ## 已收录键速查（2026-10-20 状态）
 
-| 键 | 归属 | 补入轮次 |
-|---|---|---|
-| `openlab-console` / `openlab-backflow` | console、backflow 插件通道（旧版路由名） | 第 1 轮 |
-| `console` / `commands.list` / `dynamicCordisRunner.syncInspectManifest` | 资源探测/SSH/skills 面板 | 第 1 轮 |
-| `backflow` / `dynamicCordisRunner.inventory` / `permissionPresets.catalog` / `schedule.catalog` / `schedule.list` / `messageFeedback.list` | 回流按钮、Cordis 清单、权限预设、计计划、反馈列表 | 第 2 轮 |
+| 键 | 归属 | 轮次 | 状态 |
+|---|---|---|---|
+| `openlab-console` / `openlab-backflow` | console、backflow 插件通道（旧版路由名） | 第 1 轮 | 生效 |
+| `console` / `commands.list` / `dynamicCordisRunner.syncInspectManifest` | 资源探测/SSH/skills 面板 | 第 1 轮 | 生效 |
+| `backflow` / `dynamicCordisRunner.inventory` / `permissionPresets.catalog` / `schedule.catalog` / `schedule.list` / `messageFeedback.list` | 回流按钮、Cordis 清单、权限预设、计计划、反馈列表 | 第 2 轮 | **已回撤**（跨用户数据面：实例级清单、他人反馈、全局目录——见 917bc23） |
 
 新增键一律追加到表尾，保持「键 → 归属 → 轮次」三列。
 
