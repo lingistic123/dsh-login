@@ -677,7 +677,13 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   // AICO backflow: the right sidebar's 回流到 RAG button posts to one exact
   // route under /api (`openlab-backflow`) — same one-key-per-channel pattern
   // as the console.
-  "openlab-backflow"
+  "openlab-backflow",
+  // Live deny-log keys (wall diagnostic): the console panel's own channel
+  // plus the two harness wire methods its client drives for the resource
+  // probe — commands listing and the Cordis manifest sync probe.
+  "console",
+  "commands.list",
+  "dynamicCordisRunner.syncInspectManifest"
 ]);
 
 // src/capabilities.ts

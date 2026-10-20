@@ -124,6 +124,12 @@ export const USER_ALLOWED: ReadonlySet<string> = new Set([
   // route under /api (`openlab-backflow`) — same one-key-per-channel pattern
   // as the console.
   'openlab-backflow',
+  // Live deny-log keys (wall diagnostic): the console panel's own channel
+  // plus the two harness wire methods its client drives for the resource
+  // probe — commands listing and the Cordis manifest sync probe.
+  'console',
+  'commands.list',
+  'dynamicCordisRunner.syncInspectManifest',
 ])
 
 /** May an ordinary (non-admin) user call this wire method? (Information surface only.) */
