@@ -120,6 +120,10 @@ export const USER_ALLOWED: ReadonlySet<string> = new Set([
   // db.test, probe.*, ssh.*, suites.*, skills.* over it — one key admits the
   // whole plugin channel.
   'openlab-console',
+  // AICO backflow: the right sidebar's 回流到 RAG button posts to one exact
+  // route under /api (`openlab-backflow`) — same one-key-per-channel pattern
+  // as the console.
+  'openlab-backflow',
 ])
 
 /** May an ordinary (non-admin) user call this wire method? (Information surface only.) */

@@ -673,7 +673,11 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   // exact route under /api (`openlab-console`) and multiplexes db.get/db.save/
   // db.test, probe.*, ssh.*, suites.*, skills.* over it — one key admits the
   // whole plugin channel.
-  "openlab-console"
+  "openlab-console",
+  // AICO backflow: the right sidebar's 回流到 RAG button posts to one exact
+  // route under /api (`openlab-backflow`) — same one-key-per-channel pattern
+  // as the console.
+  "openlab-backflow"
 ]);
 
 // src/capabilities.ts
