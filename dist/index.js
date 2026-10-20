@@ -668,7 +668,12 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "settings.mutate",
   "settings.openSettingsDocument",
   "settings.replace",
-  "settings.update"
+  "settings.update",
+  // AICO console: the resource-probe/SSH/skills-suites plugin registers one
+  // exact route under /api (`openlab-console`) and multiplexes db.get/db.save/
+  // db.test, probe.*, ssh.*, suites.*, skills.* over it — one key admits the
+  // whole plugin channel.
+  "openlab-console"
 ]);
 
 // src/capabilities.ts

@@ -115,6 +115,11 @@ export const USER_ALLOWED: ReadonlySet<string> = new Set([
   // strict per-user isolation keep these admin-only and rely on
   // `defaultWorkspace` provisioning instead.
   'directoryPicker.pick', 'directoryPicker.list', 'directoryPicker.createDirectory',
+  // AICO console: the resource-probe/SSH/skills-suites plugin registers one
+  // exact route under /api (`openlab-console`) and multiplexes db.get/db.save/
+  // db.test, probe.*, ssh.*, suites.*, skills.* over it — one key admits the
+  // whole plugin channel.
+  'openlab-console',
 ])
 
 /** May an ordinary (non-admin) user call this wire method? (Information surface only.) */
