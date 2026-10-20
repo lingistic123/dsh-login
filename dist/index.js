@@ -684,15 +684,19 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "console",
   "commands.list",
   "dynamicCordisRunner.syncInspectManifest",
-  // Second deny-log sweep (live wall output): the backflow overlay's own
-  // channel plus the harness wire methods the console/skills panels drive
-  // for ordinary users.
-  "backflow",
-  "dynamicCordisRunner.inventory",
-  "permissionPresets.catalog",
-  "schedule.catalog",
-  "schedule.list",
-  "messageFeedback.list"
+  // REVERTED (2026-10-20): the second deny-log sweep admitted six keys that
+  // return cross-user data — schedule.catalog is the instance-wide reminder
+  // list with session bindings, messageFeedback.list carries other users'
+  // feedback, dynamicCordisRunner.inventory exposes instance config, and
+  // permissionPresets.catalog is the global preset catalog. Ordinary users
+  // saw conversations that were not theirs. Until each method is scoped
+  // per-user in its owning service, these stay admin-only.
+  // "backflow",
+  // "dynamicCordisRunner.inventory",
+  // "permissionPresets.catalog",
+  // "schedule.catalog",
+  // "schedule.list",
+  // "messageFeedback.list"
 ]);
 
 // src/capabilities.ts
