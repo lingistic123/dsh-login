@@ -21,12 +21,21 @@ export interface AuthUser { username: string; isAdmin: boolean }
  * surface it describes is what the per-user admission seam must honor.
  */
 export const USER_ALLOWED: ReadonlySet<string> = new Set([
-  'session.list', 'session.search', 'session.create', 'session.history', 'session.models',
-  'session.selectModel', 'session.rename', 'session.fork', 'session.prompt', 'session.attachment',
+  'session.list', 'session.search', 'session.create', 'session.selectModel',
+  'session.rename', 'session.fork', 'session.prompt', 'session.attachment',
   'session.updateQueue', 'session.cancel',
-  'subagent.list', 'subagent.history', 'subagent.prompt', 'subagent.interrupt',
-  'host.describe',
-  'workspace.list', 'workspace.create', 'workspace.rename', 'workspace.delete',
+  // DSH 0.2.1-rc.2 wire surface: the model picker reads the per-session model
+  // catalog; history pagination moved from `session.history` to `session.page`;
+  // the account page initializes the default model. All read-only or
+  // own-account flows.
+  'session.modelCatalog', 'session.page', 'session.initializeDefaultModel',
+  'session.canOpenWorkspacePath', 'session.openWorkspacePath',
+  'session.workspacePathApplications',
+  // DSH 0.2.1-rc.2: the subagent runtime namespace is plural `subagents` with
+  // renamed methods (`prompt`, `interruptByParent`) — the old singular
+  // `subagent.list/history/prompt/interrupt` spellings no longer exist.
+  'subagents.prompt', 'subagents.interruptByParent',
+  'workspace.create', 'workspace.rename', 'workspace.delete',
   'workspace.insertBefore', 'workspace.insertSessionBefore', 'workspace.archiveSession',
   // DSH 0.1.6: restore one archived Session (pairs with archiveSession above).
   'workspace.unarchiveSession',
@@ -78,14 +87,34 @@ export const USER_ALLOWED: ReadonlySet<string> = new Set([
   // by the Gateway's workspaceFileScope lookup and ownership-checked through
   // GUARDED_ID_FIELDS. Read-only: no write/convert-bytes method is exposed to
   // the wire surface listed here.
-  'workspaceFiles.read', 'workspaceFiles.readAll', 'workspaceFiles.readBytes',
-  'workspaceFiles.readRelated', 'workspaceFiles.stat', 'workspaceFiles.list',
-  'workspaceFiles.changes',
+  'workspaceFiles.read', 'workspaceFiles.readBytes', 'workspaceFiles.stat',
+  'workspaceFiles.list', 'workspaceFiles.changes',
   'officeToPdf.render', 'officeToPdf.generation',
-  'skill.list',
-  'llm.providers', 'llm.models',
-  'goal.create', 'goal.edit', 'goal.pause', 'goal.resume', 'goal.complete', 'goal.clear',
-  'respond',
+  // DSH 0.2.1-rc.2: the skill catalog (`skills.list`, plural namespace) backs
+  // the composer's @-mention menu — a read-only catalog scoped to one session.
+  'skills.list',
+  // DSH 0.2.1-rc.2: the LLM directory moved from `llm.providers`/`llm.models`
+  // to explicit method names; all three are read-only provider/model catalog
+  // reads the 模型设置页 loads for every signed-in user.
+  'llm.listProviders', 'llm.listConfigurableProviders', 'llm.discoverModels',
+  // DSH 0.2.1-rc.2: the goal panel namespace is plural `goals` (was singular
+  // `goal`), plus the `goals.get` read. Every method addresses the caller's
+  // own session (`agentId`), ownership-checked through GUARDED_ID_FIELDS.
+  'goals.create', 'goals.edit', 'goals.pause', 'goals.resume', 'goals.complete',
+  'goals.clear', 'goals.get',
+  // DSH 0.2.1-rc.2: the references panel (`fileReferences.list`) and the
+  // composer attachment upload (`fileUploads.upload`) are ordinary-user
+  // flows — both carry the session identity the guard ownership-checks.
+  'fileReferences.list', 'fileUploads.upload',
+  // DSH 0.2.1-rc.2: the add-workspace dialog (`ui-workspace/src/client/
+  // navigation.ts`) drives `directoryPicker.pick`, and the picker page
+  // browses via `directoryPicker.list` / creates via
+  // `directoryPicker.createDirectory`. Denying these is what surfaced
+  // "not permitted for this user" on 添加工作区. NOTE the tradeoff: the
+  // picker browses the server filesystem, so deployments that want
+  // strict per-user isolation keep these admin-only and rely on
+  // `defaultWorkspace` provisioning instead.
+  'directoryPicker.pick', 'directoryPicker.list', 'directoryPicker.createDirectory',
 ])
 
 /** May an ordinary (non-admin) user call this wire method? (Information surface only.) */

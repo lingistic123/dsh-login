@@ -582,8 +582,6 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "session.list",
   "session.search",
   "session.create",
-  "session.history",
-  "session.models",
   "session.selectModel",
   "session.rename",
   "session.fork",
@@ -591,95 +589,58 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "session.attachment",
   "session.updateQueue",
   "session.cancel",
-  "subagent.list",
-  "subagent.history",
-  "subagent.prompt",
-  "subagent.interrupt",
-  "host.describe",
-  "workspace.list",
+  "session.modelCatalog",
+  "session.page",
+  "session.initializeDefaultModel",
+  "session.canOpenWorkspacePath",
+  "session.openWorkspacePath",
+  "session.workspacePathApplications",
+  "subagents.prompt",
+  "subagents.interruptByParent",
   "workspace.create",
   "workspace.rename",
   "workspace.delete",
   "workspace.insertBefore",
   "workspace.insertSessionBefore",
   "workspace.archiveSession",
-  // DSH 0.1.6: restore one archived Session (pairs with archiveSession above).
   "workspace.unarchiveSession",
-  // DSH 0.1.7: sidebar session pinning (pinned sessions ride the workspace
-  // tree like rename/archive; both carry the workspace/session ids the guard's
-  // GUARDED_ID_FIELDS already ownership-check).
   "workspace.pinSession",
   "workspace.unpinSession",
-  // DSH 0.1.7: the job controller (`dsh-api-job-controller`, typert namespace
-  // `job`; SessionJob moved here out of `session`). `list`/`follow` are
-  // reconnect-safe streams and `kill` is the human stop button — the same
-  // trust boundary as `session.prompt`. Every request carries `sessionId`
-  // (JobFollowRequest omits it only for unowned jobs, which any caller may
-  // observe), ownership-checked through the guard's GUARDED_ID_FIELDS. Note:
-  // `jobId` must NOT be added to the guarded fields — job ids are not in the
-  // ownership sidecar and every id collected must resolve owned, which would
-  // deny legitimate kills.
   "job.list",
   "job.follow",
   "job.kill",
-  // DSH 0.1.6: the sidebar terminal (`dsh-api-terminal-controller`, typert
-  // namespace `terminal`). Every method is session-agent-scoped by the Gateway
-  // (the `agent` argument is supplied by the Gateway itself, never by the
-  // browser), so it stays inside the caller's own agent subtree — the same
-  // trust boundary as `session.prompt` (an agent can already run shell for the
-  // user). `terminal.list` addresses a session explicitly and is ownership-
-  // checked through the guard's GUARDED_ID_FIELDS (`sessionId`).
   "terminal.environment",
   "terminal.shells",
   "terminal.list",
   "terminal.create",
-  // DSH 0.2.1-alpha.3: `terminal.follow` became the bidirectional
-  // `terminal.attach` stream — uplink write/resize now ride the attach stream
-  // itself as sequenced commands, so the standalone `terminal.write` and
-  // `terminal.resize` methods no longer exist on the wire.
   "terminal.attach",
   "terminal.rename",
   "terminal.close",
-  // DSH 0.1.6-alpha.2: terminal retention across reconnects. `terminal.retain`
-  // addresses a session explicitly (`sessionId`) and is ownership-checked
-  // through GUARDED_ID_FIELDS like terminal.list. NOTE: since alpha.2 user
-  // terminals run with the execution environment's system-user permissions
-  // (no Agent sandbox), a deployment wanting stricter posture subtracts the
-  // terminal.* entries from this set before wrapping (see docs/adapt-dsh-0.1.6-alpha.2.md).
   "terminal.retain",
-  // DSH 0.2.1-alpha.3: the native remote-access client mounts on every page
-  // and opens its `remoteAccess/follow` snapshot stream. The gateway always
-  // allows this method and the answer only ever contains the caller's own
-  // grants (an owner principal gets the owner baseline), so admitting it
-  // here just keeps that mount silent instead of surfacing a denied-stream
-  // error on every page load.
   "remoteAccess.follow",
-  // DSH 0.1.6-alpha.2: the right Sidebar's document preview. The read surface
-  // of `workspaceFiles` + the Office→PDF converter (`officeToPdf`) are what
-  // every user's document/Office preview tab calls; each method's first wire
-  // argument is the scoped session identity (`workspaceFileScopeId`), resolved
-  // by the Gateway's workspaceFileScope lookup and ownership-checked through
-  // GUARDED_ID_FIELDS. Read-only: no write/convert-bytes method is exposed to
-  // the wire surface listed here.
   "workspaceFiles.read",
-  "workspaceFiles.readAll",
   "workspaceFiles.readBytes",
-  "workspaceFiles.readRelated",
   "workspaceFiles.stat",
   "workspaceFiles.list",
   "workspaceFiles.changes",
   "officeToPdf.render",
   "officeToPdf.generation",
-  "skill.list",
-  "llm.providers",
-  "llm.models",
-  "goal.create",
-  "goal.edit",
-  "goal.pause",
-  "goal.resume",
-  "goal.complete",
-  "goal.clear",
-  "respond"
+  "skills.list",
+  "llm.listProviders",
+  "llm.listConfigurableProviders",
+  "llm.discoverModels",
+  "goals.create",
+  "goals.edit",
+  "goals.pause",
+  "goals.resume",
+  "goals.complete",
+  "goals.clear",
+  "goals.get",
+  "fileReferences.list",
+  "fileUploads.upload",
+  "directoryPicker.pick",
+  "directoryPicker.list",
+  "directoryPicker.createDirectory"
 ]);
 
 // src/capabilities.ts
