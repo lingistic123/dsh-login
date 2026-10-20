@@ -640,7 +640,35 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "fileUploads.upload",
   "directoryPicker.pick",
   "directoryPicker.list",
-  "directoryPicker.createDirectory"
+  "directoryPicker.createDirectory",
+  // Trust-model loosening (deployment decision): open the four config
+  // namespaces to ordinary users — preset switching, plugin management,
+  // the credential vault and the settings documents. The bridge wall
+  // admits them from this list on; remote-guard's ADMIN_ONLY_NAMESPACES
+  // and capabilities.ts's USER_DOMAINS mirror the same four.
+  "agentPresets.list",
+  "agentPresets.read",
+  "agentPresets.select",
+  "pluginManager.listPlugins",
+  "pluginManager.listBundles",
+  "pluginManager.inspect",
+  "pluginManager.setPluginEnabled",
+  "pluginManager.setBundleEnabled",
+  "pluginManager.installBundle",
+  "pluginManager.cancelInstall",
+  "pluginManager.removeBundle",
+  "pluginManager.waitForInstall",
+  "pluginManager.registries",
+  "pluginManager.listVersionExemptions",
+  "pluginManager.setVersionExemption",
+  "credentials.describe",
+  "credentials.set",
+  "credentials.unset",
+  "settings.describe",
+  "settings.mutate",
+  "settings.openSettingsDocument",
+  "settings.replace",
+  "settings.update"
 ]);
 
 // src/capabilities.ts
@@ -668,10 +696,20 @@ var USER_DOMAINS = [
   // DSH 0.1.7: the job controller (SessionJob moved here out of `session`) —
   // list/follow/kill with the request's sessionId ownership-checked by the
   // guard (USER_ALLOWED carries job.list/job.follow/job.kill).
-  "job"
+  "job",
+  // Trust-model loosening (deployment decision): the four config namespaces
+  // opened to ordinary users — preset switching, plugin management, the
+  // credential vault and the settings documents (mirrors remote-guard's
+  // ADMIN_ONLY_NAMESPACES trim and USER_ALLOWED's additions).
+  "credentials",
+  "settings",
+  "agentPresets",
+  "pluginManager"
 ];
 var ADMIN_ONLY_UI_PLUGINS = [
-  "@linxin666/dsh-client-ui-plugin-manager",
+  // Trust-model loosening (deployment decision): the plugin-manager panel
+  // joins the ordinary-user surface alongside the pluginManager namespace
+  // (USER_DOMAINS / ADMIN_ONLY_NAMESPACES trim).
   "@linxin666/dsh-client-ui-skill-explorer",
   "@linxin666/dsh-client-ui-skin-center",
   "@linxin666/dsh-client-ui-market",
@@ -706,37 +744,6 @@ function deriveCapabilities(user) {
 }
 function adminOnlyMethods() {
   return [
-    "credentials.list",
-    "credentials.get",
-    "credentials.set",
-    "credentials.delete",
-    // DSH 0.1.7: exact wire-method names of the settings controller
-    // (describe/update/replace — `settings.list`/`settings.reset` never
-    // existed on the wire; `canOpenAgentPresetDirectory` was removed in 0.1.7).
-    "settings.describe",
-    "settings.update",
-    "settings.replace",
-    "agentPreset.list",
-    "agentPreset.read",
-    "agentPreset.write",
-    // DSH 0.1.7-rc.1: the preset registry's document viewer
-    // (`agentPresets.readDocument` — view one declaration's child plugin
-    // list). Same strictly-admin posture as the rest of the namespace.
-    "agentPresets.readDocument",
-    "host.path",
-    "host.system",
-    // DSH 0.1.6-alpha.2: the native plugin manager (packages/boot/
-    // plugin-manager, typert namespace `pluginManager`) — installs, enables,
-    // disables, and removes profile bundles. Strictly admin-only: never added
-    // to USER_ALLOWED, and ADMIN_ONLY_NAMESPACES denies it for ordinary users.
-    "pluginManager.listPlugins",
-    "pluginManager.listBundles",
-    "pluginManager.inspect",
-    "pluginManager.setPluginEnabled",
-    "pluginManager.setBundleEnabled",
-    "pluginManager.installBundle",
-    "pluginManager.cancelInstall",
-    "pluginManager.removeBundle",
     // DSH 0.1.7: the account controller (typert namespace `account`) — the
     // process-wide upstream DeepSeek Platform grant: browser sign-in, cancel,
     // and revoke are whole-instance operations; even the read projections
@@ -2360,12 +2367,6 @@ function provideWebRuntime(ctx, trustedHosts) {
 
 // src/remote-guard.ts
 var ADMIN_ONLY_NAMESPACES = /* @__PURE__ */ new Set([
-  "credentials",
-  "settings",
-  "agentPresets",
-  // DSH 0.1.6-alpha.2: the native plugin manager installs, enables, disables,
-  // and removes profile bundles — never reachable by an ordinary user.
-  "pluginManager",
   // DSH 0.1.7-alpha.2: the account controller (`namespace: 'account'`) drives
   // the process-wide upstream DeepSeek Platform grant — startSignIn/signOut/
   // cancelSignIn rebind or revoke THE instance's account — and even the read
