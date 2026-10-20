@@ -1107,6 +1107,9 @@ function createApiBridgeAuth(deps) {
     const endpoint = endpointFromUrl(request.url);
     if (endpoint === void 0) return next();
     if (!USER_ALLOWED.has(endpoint)) {
+      // Temporary diagnostic: name the denied key and the caller's role in
+      // the Host log so a live denial can be attributed without guessing.
+      console.warn(`[dsh-login] wall deny endpoint=${endpoint} user=${user.username} isAdmin=${user.isAdmin}`);
       if (deps.quietDenials) {
         await denyQuiet(request, response);
         return;
