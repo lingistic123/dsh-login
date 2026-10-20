@@ -137,12 +137,14 @@ export const USER_ALLOWED: ReadonlySet<string> = new Set([
   // permissionPresets.catalog is the global preset catalog. Ordinary users
   // saw conversations that were not theirs. Until each method is scoped
   // per-user in its owning service, these stay admin-only.
-  // 'backflow',
   // 'dynamicCordisRunner.inventory',
   // 'permissionPresets.catalog',
   // 'schedule.catalog',
   // 'schedule.list',
   // 'messageFeedback.list',
+  // Re-admitted (2026-10-20): the backflow button's own channel — per-request
+  // operations only (doc.upload/task.status/file.read), no cross-user listing.
+  'backflow',
 ])
 
 /** May an ordinary (non-admin) user call this wire method? (Information surface only.) */

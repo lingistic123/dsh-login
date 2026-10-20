@@ -696,7 +696,10 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   // "permissionPresets.catalog",
   // "schedule.catalog",
   // "schedule.list",
-  // "messageFeedback.list"
+  // "messageFeedback.list",
+  // Re-admitted (2026-10-20): the backflow button's own channel — per-request
+  // operations only (doc.upload/task.status/file.read), no cross-user listing.
+  "backflow"
 ]);
 
 // src/capabilities.ts
