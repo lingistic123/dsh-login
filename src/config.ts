@@ -122,6 +122,13 @@ export interface Config {
   ssoRedirectUri: string
   /** Userinfo field holding the 工号 (default 'uid'). */
   ssoUidField: string
+  /**
+   * 工号 allowlist for SSO auto-provisioning: a uid on this list is provisioned
+   * as admin (and an already-provisioned ordinary record is promoted on its
+   * next SSO login); a uid off the list is an ordinary user. An empty list
+   * falls back to the legacy first-ever-SSO-login-becomes-admin rule.
+   */
+  ssoAdminUids: string[]
 }
 
 export const Config: z<Config> = z.object({
@@ -148,4 +155,5 @@ export const Config: z<Config> = z.object({
   ssoUserInfoUrl: z.string().default('https://login.huawei.com/idp/oauth2/userinfo'),
   ssoRedirectUri: z.string().default(''),
   ssoUidField: z.string().default('uid'),
+  ssoAdminUids: z.array(String).default([]),
 })

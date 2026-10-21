@@ -44,6 +44,8 @@ export interface SsoConfig {
   ssoRedirectUri: string
   /** Userinfo field holding the 工号; falls back to standard OIDC names. */
   ssoUidField: string
+  /** 工号 allowlist: listed uids provision/promote as admin. */
+  ssoAdminUids: string[]
 }
 
 export const SsoDefaults = {
@@ -55,6 +57,7 @@ export const SsoDefaults = {
   ssoUserInfoUrl: 'https://login.huawei.com/idp/oauth2/userinfo',
   ssoRedirectUri: '',
   ssoUidField: 'uid',
+  ssoAdminUids: [],
 } satisfies Record<keyof SsoConfig, unknown>
 
 /**

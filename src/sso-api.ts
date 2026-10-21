@@ -57,19 +57,38 @@ export function createSsoAuthorizeHandler(cfg: SsoConfig, states: SsoStateStore)
 }
 
 /**
- * Auto-provision the UserStore record for an SSO identity. Existing usernames
- * log straight in; a first-ever SSO login becomes the admin. The scrypt
- * password is random and unknowable — the SSO channel is the only way in for
- * provisioned accounts (password login remains for locally created users).
+ * Auto-provision the UserStore record for an SSO identity, with the 工号
+ * allowlist as the admin authority: a uid on `cfg.ssoAdminUids` is provisioned
+ * as admin — and an already-provisioned ordinary record is promoted on its
+ * next SSO login — while a uid off the list is ordinary. An empty list keeps
+ * the legacy first-ever-SSO-login-becomes-admin rule. The scrypt password is
+ * random and unknowable — the SSO channel is the only way in for provisioned
+ * accounts (password login remains for locally created users).
  */
-export async function upsertSsoUser(users: UserStore, uid: string): Promise<UserRecord> {
+export async function upsertSsoUser(
+  users: UserStore,
+  uid: string,
+  adminUids: readonly string[] = [],
+): Promise<UserRecord> {
   const records = await users.list()
   const existing = records.find(u => u.username === uid)
-  if (existing !== undefined) return existing
-  const isAdmin = records.length === 0
+  const isAdmin = adminUids.length > 0
+    ? adminUids.includes(uid)
+    : existing?.isAdmin === true || records.length === 0
+  if (existing !== undefined) {
+    if (existing.isAdmin !== isAdmin) await users.setAdmin(uid, isAdmin)
+    return existing.isAdmin === isAdmin ? existing : { ...existing, isAdmin }
+  }
   const random = randomBytes(24).toString('hex')
   try {
-    return await users.create(uid, random, isAdmin)
+    const record = await users.create(uid, random, isAdmin)
+    if (record.isAdmin !== isAdmin) {
+      // users.create force-admins the very first record (setup-flow rule);
+      // the allowlist overrides that for SSO provisioning.
+      await users.setAdmin(uid, isAdmin)
+      return { ...record, isAdmin }
+    }
+    return record
   } catch {
     // Race with a concurrent first login, or a uid outside the username
     // pattern — re-lookup, then fail loudly (error redirect, no silent account).
@@ -116,7 +135,7 @@ export function createSsoCallbackHandler(deps: SsoCallbackDeps): WebRoute['handl
     if (uid === undefined) return fail('sso_no_uid')
     let record: UserRecord
     try {
-      record = await upsertSsoUser(deps.users, uid)
+      record = await upsertSsoUser(deps.users, uid, deps.cfg.ssoAdminUids)
     } catch {
       return fail('sso_provision_failed')
     }

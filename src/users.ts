@@ -84,6 +84,20 @@ export class UserStore {
   }
 
   /**
+   * Promote/demote `username`. The caller owns guards: the admin API checks
+   * the last-enabled-admin rule; the SSO allowlist path applies the
+   * configured list verbatim on each login (existing sessions keep their
+   * stamped flag until they re-login).
+   */
+  async setAdmin(username: string, isAdmin: boolean): Promise<void> {
+    const records = await this.list()
+    const record = records.find(u => u.username === username)
+    if (record === undefined) throw new Error(`unknown user "${username}"`)
+    record.isAdmin = isAdmin
+    await this.credentials.set(this.ref, JSON.stringify(records))
+  }
+
+  /**
    * Stamp `lastLoginAt` for a verified login. Best-effort audit field:
    * unknown users are a silent no-op so this can never fail a login.
    */

@@ -83,6 +83,7 @@ describe('buildAuthorizeUrl', () => {
       ssoUserInfoUrl: 'https://login.huawei.com/idp/oauth2/userinfo',
       ssoRedirectUri: 'http://10.1.2.3:3080/api/auth/sso/callback',
       ssoUidField: 'uid',
+      ssoAdminUids: [],
     }
     const url = new URL(buildAuthorizeUrl(cfg, 'st ate/1', 'http://h/callback?a=1&b=2'))
     expect(url.origin).toBe('https://login.huawei.com')
@@ -113,6 +114,32 @@ describe('upsertSsoUser auto-provisioning', () => {
     expect(again.isAdmin).toBe(true)
     expect((await users.list()).length).toBe(2)
   })
+
+  it('treats the 工号 allowlist as the admin authority (l00623385)', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-sso-allowlist-'))
+    context = new Context()
+    context.baseUrl = pathToFileURL(root).href + '/'
+    await context.plugin(MemoryCredentials)
+    const users = new UserStore(context.credentials, credentialRef('DSH_LOGIN_PASSWORD_USERS'))
+
+    // Allowlist authority: listed uid → admin, unlisted → ordinary.
+    const admin = await upsertSsoUser(users, 'l00623385', ['l00623385'])
+    expect(admin.isAdmin).toBe(true)
+    const ordinary = await upsertSsoUser(users, 'zhangsan01', ['l00623385'])
+    expect(ordinary.isAdmin).toBe(false)
+
+    // Promotion: an already-provisioned ordinary record is promoted on its
+    // next SSO login once the allowlist covers it.
+    await upsertSsoUser(users, 'wangwu03', [])
+    const promoted = await upsertSsoUser(users, 'wangwu03', ['l00623385', 'wangwu03'])
+    expect(promoted.isAdmin).toBe(true)
+
+    // Demotion: a non-empty allowlist is authoritative — an admin record
+    // off the list drops to ordinary on its next login (existing sessions
+    // keep their stamped flag until re-login).
+    const demoted = await upsertSsoUser(users, 'l00623385', ['zhangsan01'])
+    expect(demoted.isAdmin).toBe(false)
+  })
 })
 
 describe('SSO callback integration (fake IDaaS)', () => {
@@ -139,6 +166,7 @@ describe('SSO callback integration (fake IDaaS)', () => {
       ssoUserInfoUrl: `${base}/userinfo`,
       ssoRedirectUri: 'http://127.0.0.1:3080/api/auth/sso/callback',
       ssoUidField: 'uid',
+      ssoAdminUids: ['l00623385'],
     }
     const handler = createSsoCallbackHandler({
       cfg,
@@ -158,7 +186,7 @@ describe('SSO callback integration (fake IDaaS)', () => {
     expect(ok.cookie).toContain('dsh_session=')
     const records = await users.list()
     expect(records.length).toBe(1)
-    expect(records[0]?.username).toBe('zhangsan01')
+    expect(records[0]?.username).toBe('l00623385')
     expect(records[0]?.isAdmin).toBe(true)
 
     // State replay: consumed once → CSRF bounce.
@@ -224,7 +252,7 @@ function startFakeIdaas(): Server {
           return
         }
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ uid: 'zhangsan01', name: '张三' }))
+        res.end(JSON.stringify({ uid: 'l00623385', name: 'DSH 管理员' }))
         return
       }
       res.writeHead(404)

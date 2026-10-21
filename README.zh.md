@@ -73,6 +73,40 @@ dsh plugin --profile web remove @islibaodong/dsh-login
 
 > 为什么 `--profile web`？DSH 插件按 profile 目录安装（`$DSH_HOME/profiles/<name>`）；`web` 就是启动 Web GUI 的 profile，用自定义 profile 的话换成对应名字即可。
 
+## 华为内网 SSO 登录（IDaaS 2.0 / uniportal OAuth2）
+
+在内网部署里，员工不必记第二套账号：/login 页提供「使用华为内网 SSO 登录」通道，走公司统一认证（IDaaS 2.0 授权码模式），首次登录**自动注册**账号——工号即用户名，无需管理员预先建号。
+
+**流程**：
+
+```
+/login ──「SSO 登录」──▶ /api/auth/sso/authorize ──302──▶ IDaaS 统一登录页
+                                                        │ 内网认证
+/callback?code&state ◀──────────────────────────────────┘
+   ① state 服务端比对 + 一次性消费（防 CSRF）
+   ② 后端 POST token 端点换 access_token（secret 只在服务端↔IDaaS 段）
+   ③ userinfo 取工号（uid）→ UserStore 无则自动建号
+   ④ 签发 dsh_session 会话 → 302 回 /
+```
+
+**管理员判定（工号 allowlist）**：`ssoAdminUids` 清单里的工号自动成为管理员（已存在的普通账号在下次 SSO 登录时被提升）；清单外的工号是普通用户；清单为空时回退为"首个 SSO 登录者成 admin"的旧规则。
+
+**配置**（cordis.patch.yml / 插件配置）：
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `ssoEnabled` | `false` | 总开关；false 时不注册任何 SSO 路由 |
+| `ssoClientId` | `''` | IDaaS 控制台注册的 client_id（如 `S007627-RAG`） |
+| `ssoClientSecret` | `DSH_LOGIN_SSO_CLIENT_SECRET` | 凭据 ref 名——secret 值走 DSH 凭据存储写入，不进配置文件 |
+| `ssoAuthorizeUrl` / `ssoTokenUrl` / `ssoUserInfoUrl` | login.huawei.com 三件套 | IDaaS 端点，环境不同可覆盖 |
+| `ssoRedirectUri` | `''` | 预登记的回调地址；空则按请求 Host 推导 |
+| `ssoUidField` | `uid` | userinfo 里工号字段名 |
+| `ssoAdminUids` | `[]` | admin 工号 allowlist |
+
+**失败提示**：SSO 回调失败统一弹回 `/login?error=sso_<code>`，登录页只显示业务化中文提示；真实原因（token 端点 5xx、userinfo 缺 uid 字段等）看服务端日志——日志只记状态码/字段名，不记 secret/token/code 值。
+
+**安全边界**：secret 与 access_token 只存在于后端↔IDaaS 段，浏览器只接触跳转 URL 和一次性 code；会话仍是 `dsh_session`（HttpOnly + SameSite=Strict），与密码登录同一会话体系。允许清单外的工号登录建号，但只给普通用户权限；管理员名单走配置，不在 IDaaS 里放权。
+
 ## 常见问题
 
 - **重启 DSH 后要重新登录？** 不需要——登录会话会持久化到 `<dataDir>/sessions.json`（0o600），已登录的 Cookie 跨进程重启仍有效（Cookie 本身默认 7 天）。只有登出、改密、删用户或 TTL 过期才会使其失效。

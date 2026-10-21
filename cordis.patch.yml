@@ -35,6 +35,18 @@
         sessionTtl: 604800
         takeOverWebRuntime: true
         enabled: true
+        # Huawei intranet SSO channel (IDaaS 2.0 / uniportal OAuth2): /login
+        # gains an SSO anchor; the callback auto-provisions the account on
+        # first login. The client secret itself lives in the DSH credentials
+        # store under the ref below (write once via the credentials CLI) —
+        # never in this file.
+        ssoEnabled: true
+        ssoClientId: S007627-RAG
+        ssoClientSecret: DSH_LOGIN_SSO_CLIENT_SECRET
+        ssoUidField: uid
+        # 工号 allowlist = admin authority for the SSO channel.
+        ssoAdminUids:
+          - l00623385
 
 # The web-runtime row's fallback claim conflicts with dsh-login's gateway;
 # dsh-login re-provides webRuntime, so disabling it is safe.
