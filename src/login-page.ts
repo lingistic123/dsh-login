@@ -414,6 +414,38 @@ const BASE_CSS = `
       margin-bottom: 10px;
     }
 
+    /* ---- SSO channel anchor (shown when config.ssoEnabled) ---- */
+    .sso-link {
+      display: block;
+      width: 100%;
+      padding: 11px;
+      margin-bottom: 12px;
+      background: var(--lt-inset);
+      border: 1px solid var(--lt-line);
+      border-radius: 9px;
+      color: var(--lt-text);
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: center;
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .sso-link:hover { border-color: var(--accent); background: #eef2fd; }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0 16px;
+      color: var(--lt-muted);
+      font-size: 0.72rem;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--lt-line);
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation: none !important;
@@ -506,13 +538,16 @@ function renderPage(opts: PageOptions): string {
 </html>`
 }
 
-/** Login page: username + password, POSTs {username, password}. */
-export function renderLoginPage(): string {
+/** Login page: username + password, POSTs {username, password}. The SSO
+ * anchor (config.ssoEnabled) links to /api/auth/sso/authorize. */
+export function renderLoginPage(ssoEnabled = false): string {
   return renderPage({
     title: 'DSH 登录',
     heading: '登录 DSH',
     subtitle: '多用户网关：每人独立会话，权限各归其位。',
     fields: `
+        ${ssoEnabled ? `<a class="sso-link" href="/api/auth/sso/authorize">使用华为内网 SSO 登录</a>
+        <div class="divider"><span>或使用账号密码</span></div>` : ''}
         <div class="field">
           <input type="text" name="username" id="username" placeholder="用户名"
             autocomplete="username" autofocus required>
@@ -528,6 +563,21 @@ export function renderLoginPage(): string {
     var password = document.getElementById('password');
     var error = document.getElementById('error');
     var submit = document.getElementById('submit');
+
+    var ssoErrors = {
+      sso_bad_state: 'SSO 回调校验失败，请从登录页重新发起',
+      sso_not_configured: 'SSO 未配置：请先在凭据中写入 client secret',
+      sso_exchange_failed: 'SSO 换取令牌失败，请稍后重试',
+      sso_userinfo_failed: 'SSO 获取用户信息失败，请稍后重试',
+      sso_no_uid: 'SSO 未返回工号，请在 IDaaS 控制台勾选 uid 附加信息',
+      sso_provision_failed: 'SSO 自动注册失败，请联系管理员',
+    };
+    var params = new URLSearchParams(window.location.search);
+    var errCode = params.get('error');
+    if (errCode) {
+      error.textContent = ssoErrors[errCode] ?? '登录失败，请重试';
+      history.replaceState(null, '', '/login');
+    }
 
     form.addEventListener('submit', async function (e) {
       e.preventDefault();

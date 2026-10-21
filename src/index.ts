@@ -20,6 +20,8 @@ import { DefaultWorkspaceProvisioner, type WorkspaceRegistryLike } from './provi
 import { createHostSessionApi, createHostSessionSource, tryGetService } from './host-session-access.ts'
 import { probeOwnedSessionIds } from './bridge-list-filter.ts'
 import { createLoginHandler, createLogoutHandler, createLogoutRedirectHandler, createSetupHandler } from './login-api.ts'
+import { createSsoAuthorizeHandler, createSsoCallbackHandler } from './sso-api.ts'
+import { SsoStateStore } from './sso.ts'
 import { createAdminRoutes } from './admin-api.ts'
 import { renderLoginPage, renderSetupPage } from './login-page.ts'
 import { provideWebRuntime, resolveDistIndex } from './web-runtime.ts'
@@ -140,7 +142,7 @@ export function apply(ctx: Context, config: Config): void {
     path: '/login',
     handler: async (_req, res) => {
       // No users yet → first-time setup form; otherwise the login form.
-      const html = (await users.isEmpty()) ? renderSetupPage() : renderLoginPage()
+      const html = (await users.isEmpty()) ? renderSetupPage() : renderLoginPage(config.ssoEnabled)
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
       res.end(html)
     },
@@ -164,6 +166,27 @@ export function apply(ctx: Context, config: Config): void {
     path: '/api/auth/logout',
     handler: createLogoutHandler(store),
   }), 'dsh-login: /api/auth/logout')
+  // Huawei intranet SSO channel (IDaaS 2.0 / uniportal OAuth2): the callback is
+  // an exact route, so it is reachable pre-auth; the code exchange runs fully
+  // server-side. Disabled unless config.ssoEnabled AND a client_id is set —
+  // a half-configured channel must not half-register.
+  if (config.ssoEnabled && config.ssoClientId !== '') {
+    const states = new SsoStateStore()
+    const resolveSecret = async (): Promise<string | undefined> => {
+      const resolved = await ctx.credentials.resolve(credentialRef(config.ssoClientSecret))
+      return resolved?.value
+    }
+    ctx.effect(() => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/auth/sso/authorize',
+      handler: createSsoAuthorizeHandler(gatewayConfig, states),
+    }), 'dsh-login: /api/auth/sso/authorize')
+    ctx.effect(() => ctx.webServer.register({
+      kind: 'exact',
+      path: '/api/auth/sso/callback',
+      handler: createSsoCallbackHandler({ cfg: gatewayConfig, users, store, sessionTtl: config.sessionTtl, states, resolveSecret }),
+    }), 'dsh-login: /api/auth/sso/callback')
+  }
   // Link-friendly logout: same revocation, but answers with a redirect so
   // plain <a href="/logout"> entries (e.g. the admin page topbar) work.
   ctx.effect(() => ctx.webServer.register({

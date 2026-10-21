@@ -99,6 +99,29 @@ export interface Config {
    * user gets the complete boot graph as before.
    */
   uiRoleGate: boolean
+  /**
+   * Huawei intranet SSO channel (IDaaS 2.0 / uniportal OAuth2 authorization
+   * code). When on, /login shows an SSO button and two extra exact routes are
+   * registered: /api/auth/sso/authorize (302 to IDaaS) and /api/auth/sso/callback
+   * (code exchange + auto-provision). Password login stays available as the
+   * admin fallback channel.
+   */
+  ssoEnabled: boolean
+  /** OAuth2 client_id registered in the IDaaS console (e.g. 'S007627-RAG'). */
+  ssoClientId: string
+  /** Credential ref name holding the client secret; resolve via the DSH
+   * credentials system (value never lives in config files). */
+  ssoClientSecret: string
+  /** IDaaS authorize endpoint. */
+  ssoAuthorizeUrl: string
+  /** IDaaS token endpoint (JSON-body client_id/secret, per the IDaaS guide). */
+  ssoTokenUrl: string
+  /** IDaaS userinfo endpoint. */
+  ssoUserInfoUrl: string
+  /** Pre-registered callback URL; '' derives it from the request Host. */
+  ssoRedirectUri: string
+  /** Userinfo field holding the 工号 (default 'uid'). */
+  ssoUidField: string
 }
 
 export const Config: z<Config> = z.object({
@@ -117,4 +140,12 @@ export const Config: z<Config> = z.object({
   quietDenials: z.boolean().default(true),
   apiBridgeAuth: z.boolean().default(true),
   uiRoleGate: z.boolean().default(true),
+  ssoEnabled: z.boolean().default(false),
+  ssoClientId: z.string().default(''),
+  ssoClientSecret: z.string().default('DSH_LOGIN_SSO_CLIENT_SECRET'),
+  ssoAuthorizeUrl: z.string().default('https://login.huawei.com/idp/oauth2/authorize'),
+  ssoTokenUrl: z.string().default('https://login.huawei.com/idp/oauth2/token'),
+  ssoUserInfoUrl: z.string().default('https://login.huawei.com/idp/oauth2/userinfo'),
+  ssoRedirectUri: z.string().default(''),
+  ssoUidField: z.string().default('uid'),
 })
