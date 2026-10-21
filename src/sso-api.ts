@@ -15,6 +15,7 @@
  * tokens/codes/secret values.
  */
 import { randomBytes } from 'node:crypto'
+import { appendFileSync, existsSync } from 'node:fs'
 import type { ServerResponse, IncomingMessage } from 'node:http'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { SessionStore } from './session.ts'
@@ -44,6 +45,19 @@ export interface SsoCallbackDeps {
 }
 
 /**
+ * 排障 trace（marker 文件 /tmp/dsh-sso-debug 存在时启用）：
+ * 只记阶段、状态码、字段名——绝不记 secret/token/code/字段值。
+ */
+function ssoTrace(line: string): void {
+  try {
+    if (!existsSync('/tmp/dsh-sso-debug')) return
+    appendFileSync('/tmp/dsh-sso-trace.log', `${new Date().toISOString()} ${line}\n`, { mode: 0o600 })
+  } catch {
+    /* 排障辅助不引入新故障：静默 */
+  }
+}
+
+/**
  * GET /api/auth/sso/authorize — mint a one-time state and 302 to the IDaaS
  * authorize endpoint. No session required: this is the front door.
  */
@@ -51,6 +65,7 @@ export function createSsoAuthorizeHandler(cfg: SsoConfig, states: SsoStateStore)
   return (req: IncomingMessage, res: ServerResponse) => {
     const state = states.issue()
     const redirectUri = resolveRedirectUri(cfg, req)
+    ssoTrace(`authorize -> ${redirectUri}`)
     res.writeHead(302, { Location: buildAuthorizeUrl(cfg, state, redirectUri) })
     res.end()
   }
@@ -112,7 +127,9 @@ export function createSsoCallbackHandler(deps: SsoCallbackDeps): WebRoute['handl
     const url = new URL(req.url ?? '/', 'http://x')
     const code = url.searchParams.get('code')
     const state = url.searchParams.get('state')
-    if (code === null || code.length === 0 || state === null || !deps.states.consume(state)) {
+    const stateOk = state !== null && deps.states.consume(state)
+    ssoTrace(`callback: state_ok=${stateOk ? 'y' : 'n'} code_len=${code?.length ?? 0}`)
+    if (code === null || code.length === 0 || state === null || !stateOk) {
       return fail('sso_bad_state')
     }
     let secret: string | undefined
@@ -127,14 +144,18 @@ export function createSsoCallbackHandler(deps: SsoCallbackDeps): WebRoute['handl
     try {
       accessToken = await exchangeCode(deps.cfg, secret, code, redirectUri)
     } catch {
+      ssoTrace('exchange: FAILED')
       return fail('sso_exchange_failed')
     }
+    ssoTrace(`exchange: ok token_len=${accessToken.length}`)
     let info: Record<string, unknown>
     try {
       info = await fetchUserInfo(deps.cfg, accessToken)
     } catch {
+      ssoTrace('userinfo: FAILED')
       return fail('sso_userinfo_failed')
     }
+    ssoTrace(`userinfo: keys=${Object.keys(info).sort().join(',')}`)
     const uid = resolveUid(info, deps.cfg.ssoUidField)
     if (uid === undefined) {
       // 排障辅助：只记字段名，不记字段值（secret/token/code 同级红线）。

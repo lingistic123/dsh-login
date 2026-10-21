@@ -15,6 +15,7 @@
  *   field names are logged, never values.
  */
 import { randomBytes } from 'node:crypto'
+import { existsSync, writeFileSync } from 'node:fs'
 import type { IncomingMessage } from 'node:http'
 
 /** Well-known error codes surfaced to the login page via `?error=`. */
@@ -176,9 +177,8 @@ export async function fetchUserInfo(
   const info = (await res.json()) as unknown
   if (typeof info !== 'object' || info === null) throw new Error('userinfo response is not an object')
   const record = info as Record<string, unknown>
-  if (process.env.DSH_SSO_DEBUG) {
-    // 排障探针（默认关）：一次性 dump 到 0600 临时文件，看完即删——不进日志。
-    const { writeFileSync } = await import('node:fs')
+  if (existsSync('/tmp/dsh-sso-debug')) {
+    // 排障探针（marker 文件存在才生效，看完即删）。
     writeFileSync('/tmp/dsh-sso-userinfo-debug.json', JSON.stringify(record, null, 2), { mode: 0o600 })
   }
   if (record.errorCode) throw new Error(`userinfo errorCode ${String(record.errorCode)}`)
