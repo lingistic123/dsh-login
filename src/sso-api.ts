@@ -136,7 +136,11 @@ export function createSsoCallbackHandler(deps: SsoCallbackDeps): WebRoute['handl
       return fail('sso_userinfo_failed')
     }
     const uid = resolveUid(info, deps.cfg.ssoUidField)
-    if (uid === undefined) return fail('sso_no_uid')
+    if (uid === undefined) {
+      // 排障辅助：只记字段名，不记字段值（secret/token/code 同级红线）。
+      console.warn('sso_no_uid: userinfo field names: %j', Object.keys(info).sort())
+      return fail('sso_no_uid')
+    }
     let record: UserRecord
     try {
       record = await upsertSsoUser(deps.users, uid, deps.cfg.ssoAdminUids)
