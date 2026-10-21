@@ -64,6 +64,9 @@ export function createSsoAuthorizeHandler(cfg: SsoConfig, states: SsoStateStore)
  * the legacy first-ever-SSO-login-becomes-admin rule. The scrypt password is
  * random and unknowable — the SSO channel is the only way in for provisioned
  * accounts (password login remains for locally created users).
+ *
+ * 审批门（activated）：非空 allowlist 时，清单内工号建号即激活（预信任，直接登录）；
+ * 清单外工号建号为待激活（`activated: false`），登录被挡到管理员放行。空清单不设门。
  */
 export async function upsertSsoUser(
   users: UserStore,
@@ -86,9 +89,10 @@ export async function upsertSsoUser(
       // users.create force-admins the very first record (setup-flow rule);
       // the allowlist overrides that for SSO provisioning.
       await users.setAdmin(uid, isAdmin)
-      return { ...record, isAdmin }
     }
-    return record
+    const activated = adminUids.length > 0 ? adminUids.includes(uid) : true
+    if (!activated) await users.setActivated(uid, false)
+    return { ...record, isAdmin, ...(activated ? {} : { activated: false }) }
   } catch {
     // Race with a concurrent first login, or a uid outside the username
     // pattern — re-lookup, then fail loudly (error redirect, no silent account).
@@ -139,6 +143,8 @@ export function createSsoCallbackHandler(deps: SsoCallbackDeps): WebRoute['handl
     } catch {
       return fail('sso_provision_failed')
     }
+    // 审批门：待激活账号不放会话——工号已入库，等管理员在用户管理里放行。
+    if (record.activated === false) return fail('sso_pending_activation')
     const session = deps.store.create(record.username, record.isAdmin)
     res.setHeader('Set-Cookie', buildCookieHeader(session.token, deps.sessionTtl))
     res.writeHead(302, { Location: '/' })

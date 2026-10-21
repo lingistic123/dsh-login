@@ -107,6 +107,8 @@ dsh plugin --profile web remove @islibaodong/dsh-login
 
 **安全边界**：secret 与 access_token 只存在于后端↔IDaaS 段，浏览器只接触跳转 URL 和一次性 code；会话仍是 `dsh_session`（HttpOnly + SameSite=Strict），与密码登录同一会话体系。允许清单外的工号登录建号，但只给普通用户权限；管理员名单走配置，不在 IDaaS 里放权。
 
+**审批门（激活制）**：配置了非空 `ssoAdminUids` 后——清单内工号建号即激活（预信任，登录直通）；清单外工号首次 SSO 登录只**登记待激活**（不签发会话），管理员在 设置→用户管理 点「激活」放行，激活后下次登录直通。空清单不设门（保持"首个登录者成 admin"旧规则）。激活只影响后续登录，已存在会话不受影响。
+
 ## 常见问题
 
 - **重启 DSH 后要重新登录？** 不需要——登录会话会持久化到 `<dataDir>/sessions.json`（0o600），已登录的 Cookie 跨进程重启仍有效（Cookie 本身默认 7 天）。只有登出、改密、删用户或 TTL 过期才会使其失效。

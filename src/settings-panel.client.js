@@ -69,6 +69,7 @@ function (require) {
 .dshlu-badge--admin { border-color: transparent; background: var(--dsw-alias-fill-tsp-secondary); color: var(--dsw-alias-label-secondary); }
 .dshlu-badge--online { border-color: transparent; color: var(--dsw-alias-state-success-primary); }
 .dshlu-badge--disabled { border-color: transparent; color: var(--dsw-alias-state-warn-label); }
+.dshlu-badge--pending { border-color: transparent; color: var(--dsw-alias-state-warn-label); }
 .dshlu-danger { color: var(--dsw-alias-state-error-primary); }
 .dshlu-card { border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .dshlu-card h3 { margin: 0; font-size: 14px; line-height: 22px; font-weight: 500; }
@@ -108,7 +109,7 @@ function (require) {
   var zh = {
     'users.nav': '用户管理',
     'users.title': '用户管理',
-    'users.intro': '管理本部署的登录账户：新建用户、重置密码、禁用或删除。禁用用户的现有会话会被立即吊销。',
+    'users.intro': '管理本部署的登录账户：新建用户、重置密码、激活、禁用或删除。禁用用户的现有会话会被立即吊销。',
     'account.nav': '账户',
     'account.title': '账户',
     'account.intro': '当前登录的身份。修改密码或账户问题请联系管理员。',
@@ -123,9 +124,11 @@ function (require) {
     'status.online': '在线 ×{n}',
     'status.offline': '离线',
     'status.disabled': '已禁用',
+    'status.pending': '待激活',
     'action.resetPassword': '重置密码',
     'action.disable': '禁用',
     'action.enable': '启用',
+    'action.activate': '激活',
     'action.remove': '删除',
     'create.title': '新建用户',
     'create.username': '用户名',
@@ -170,7 +173,7 @@ function (require) {
   var en = {
     'users.nav': 'Users',
     'users.title': 'User management',
-    'users.intro': 'Manage this deployment\'s login accounts: create users, reset passwords, disable or remove them. Disabling a user revokes their live sessions immediately.',
+    'users.intro': 'Manage this deployment\'s login accounts: create users, reset passwords, activate, disable or remove them. Disabling a user revokes their live sessions immediately.',
     'account.nav': 'Account',
     'account.title': 'Account',
     'account.intro': 'Your signed-in identity. Contact an administrator for password or account issues.',
@@ -185,9 +188,11 @@ function (require) {
     'status.online': 'online ×{n}',
     'status.offline': 'offline',
     'status.disabled': 'disabled',
+    'status.pending': 'pending',
     'action.resetPassword': 'Reset password',
     'action.disable': 'Disable',
     'action.enable': 'Enable',
+    'action.activate': 'Activate',
     'action.remove': 'Remove',
     'create.title': 'Create user',
     'create.username': 'Username',
@@ -469,6 +474,7 @@ function (require) {
               u.onlineSessions > 0 ? Badge('online', 'status.online', t, u.onlineSessions) : Badge('muted', 'status.offline', t),
               u.disabled ? Badge('disabled', 'status.disabled', t) : null),
             h('div', { className: 'dshlu-cell dshlu-cell--actions' },
+              u.activated === false ? h(Button, { variant: 'ghost', size: 'sm', onClick: function () { void run(async function () { await api('/api/auth/admin/users/activate', 'POST', { username: u.username, activated: true }) }, 'action.activate') } }, t('action.activate')) : null,
               h(Button, { variant: 'ghost', size: 'sm', onClick: function () { setResetFor(u.username); setResetPw('') } }, t('action.resetPassword')),
               h(Button, { variant: 'ghost', size: 'sm', onClick: function () { setDisableFor(u.username) } }, t(u.disabled ? 'action.enable' : 'action.disable')),
               h(Button, { variant: 'ghost', size: 'sm', className: 'dshlu-danger', onClick: function () { setRemoveFor(u.username); setRemoveAck(false) } }, t('action.remove'))))

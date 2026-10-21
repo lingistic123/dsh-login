@@ -25,6 +25,7 @@ export type SsoErrorCode =
   | 'sso_userinfo_failed'
   | 'sso_no_uid'
   | 'sso_provision_failed'
+  | 'sso_pending_activation'
 
 /** SSO channel configuration (flat keys in the plugin Config). */
 export interface SsoConfig {

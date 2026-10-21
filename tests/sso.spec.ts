@@ -219,10 +219,68 @@ describe('SSO callback integration (fake IDaaS)', () => {
 
     idaas.close()
   })
+
+  it('gates off-allowlist uids: registered as pending until an admin activates them', async () => {
+    root = await mkdtemp(join(tmpdir(), 'dsh-sso-activation-'))
+    context = new Context()
+    context.baseUrl = pathToFileURL(root).href + '/'
+    await context.plugin(MemoryCredentials, { DSH_LOGIN_SSO_CLIENT_SECRET: 'Huawei@123' })
+    const store = new SessionStore(3600)
+    const users = new UserStore(context.credentials, credentialRef('DSH_LOGIN_PASSWORD_USERS'))
+    const states = new SsoStateStore()
+
+    const idaas = startFakeIdaas('zhangsan01')
+    await new Promise<void>(resolve => { idaas.listen(0, '127.0.0.1', resolve) })
+    const idaasPort = String((idaas.address() as AddressInfo).port)
+    const base = `http://127.0.0.1:${idaasPort}`
+    const cfg: SsoConfig = {
+      ssoEnabled: true,
+      ssoClientId: 'S007627-RAG',
+      ssoClientSecret: 'DSH_LOGIN_SSO_CLIENT_SECRET',
+      ssoAuthorizeUrl: `${base}/authorize`,
+      ssoTokenUrl: `${base}/token`,
+      ssoUserInfoUrl: `${base}/userinfo`,
+      ssoRedirectUri: 'http://127.0.0.1:3080/api/auth/sso/callback',
+      ssoUidField: 'uid',
+      ssoAdminUids: ['l00623385'],
+    }
+    const handler = createSsoCallbackHandler({
+      cfg,
+      users,
+      store,
+      sessionTtl: 3600,
+      states,
+      resolveSecret: async () => 'Huawei@123',
+    })
+
+    // First SSO login: uid off the allowlist → registered pending, no session.
+    const first = fakeRes()
+    const state = states.issue()
+    await handler(fakeReq(`/api/auth/sso/callback?code=good-code&state=${state}`), first)
+    expect(first.status).toBe(302)
+    expect(first.location).toBe('/login?error=sso_pending_activation')
+    expect(first.cookie).toBeUndefined()
+    let records = await users.list()
+    expect(records.length).toBe(1)
+    expect(records[0]?.username).toBe('zhangsan01')
+    expect(records[0]?.activated).toBe(false)
+
+    // Admin activates → next SSO login goes straight through.
+    await users.setActivated('zhangsan01', true)
+    const second = fakeRes()
+    const state2 = states.issue()
+    await handler(fakeReq(`/api/auth/sso/callback?code=good-code&state=${state2}`), second)
+    expect(second.status).toBe(302)
+    expect(second.location).toBe('/')
+    expect(second.cookie).toContain('dsh_session=')
+    records = await users.list()
+    expect(records[0]?.activated).toBeUndefined()
+    idaas.close()
+  })
 })
 
 /** Fake IDaaS: /token (JSON body, verifies secret) and /userinfo (Bearer). */
-function startFakeIdaas(): Server {
+function startFakeIdaas(uid = 'l00623385'): Server {
   return createServer((req, res) => {
     let raw = ''
     req.on('data', (chunk: Buffer) => { raw += chunk.toString() })
@@ -252,7 +310,7 @@ function startFakeIdaas(): Server {
           return
         }
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ uid: 'l00623385', name: 'DSH 管理员' }))
+        res.end(JSON.stringify({ uid, name: 'DSH 用户' }))
         return
       }
       res.writeHead(404)

@@ -571,6 +571,7 @@ export function renderLoginPage(ssoEnabled = false): string {
       sso_userinfo_failed: 'SSO 获取用户信息失败，请稍后重试',
       sso_no_uid: 'SSO 未返回工号，请在 IDaaS 控制台勾选 uid 附加信息',
       sso_provision_failed: 'SSO 自动注册失败，请联系管理员',
+      sso_pending_activation: '工号已登记，等待管理员激活后再试',
     };
     var params = new URLSearchParams(window.location.search);
     var errCode = params.get('error');

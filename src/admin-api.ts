@@ -103,6 +103,7 @@ export function createAdminRoutes(deps: AdminDeps): WebRoute[] {
           isAdmin: record.isAdmin,
           lastLoginAt: record.lastLoginAt ?? null,
           disabled: record.disabled === true,
+          activated: record.activated !== false,
           onlineSessions: online.get(record.username) ?? 0,
         })),
       })
@@ -218,6 +219,24 @@ export function createAdminRoutes(deps: AdminDeps): WebRoute[] {
     return sendJson(res, 200, { ok: true })
   } }
 
+  // SSO 审批门放行：待激活工号（`activated: false`，SSO 自动注册但不在 allowlist
+  // 内）由管理员在此放行；激活只影响后续登录——待激活账号从未持有会话。
+  const userActivate: WebRoute = { kind: 'exact', path: '/api/auth/admin/users/activate', handler: async (req, res) => {
+    if (requireAdmin(deps, req, res) === undefined) return
+    const body = await readJsonObject(req)
+    if (body === null || typeof body.username !== 'string' || typeof body.activated !== 'boolean') {
+      return sendJson(res, 400, { error: 'bad request' })
+    }
+    try {
+      await deps.users.setActivated(body.username, body.activated)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : ''
+      if (message.includes('unknown user')) return sendJson(res, 404, { error: 'unknown user' })
+      return sendJson(res, 400, { error: 'bad request' })
+    }
+    return sendJson(res, 200, { ok: true })
+  } }
+
   // Live + persisted "默认用户工作空间" toggle. The /api provisioner reads it
   // per request, so a toggle takes effect immediately (no restart needed).
   const setting = deps.defaultWorkspaceSetting
@@ -250,7 +269,7 @@ export function createAdminRoutes(deps: AdminDeps): WebRoute[] {
     return sendJson(res, 200, { ok: true, enabled: remoteSetting.get(), applied })
   } }
 
-  const routes: WebRoute[] = [me, capabilitiesRoute, usersRoute, userPassword, userRemove, userDisable]
+  const routes: WebRoute[] = [me, capabilitiesRoute, usersRoute, userPassword, userRemove, userDisable, userActivate]
   if (hostsRoute !== undefined) routes.push(hostsRoute)
   if (settingRoute !== undefined) routes.push(settingRoute)
   if (remoteSettingRoute !== undefined) routes.push(remoteSettingRoute)

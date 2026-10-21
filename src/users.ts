@@ -11,6 +11,11 @@ export interface UserRecord {
   lastLoginAt?: number
   /** Disabled accounts cannot log in; absent on legacy records (= false). */
   disabled?: boolean
+  /**
+   * SSO 审批门：`false` = 已登记待激活（工号已入库，管理员放行前 SSO 登录被挡）；
+   * `true`/absent = 已激活。本地密码账号（setup/管理员创建）隐式激活。
+   */
+  activated?: boolean
 }
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{1,32}$/
@@ -94,6 +99,20 @@ export class UserStore {
     const record = records.find(u => u.username === username)
     if (record === undefined) throw new Error(`unknown user "${username}"`)
     record.isAdmin = isAdmin
+    await this.credentials.set(this.ref, JSON.stringify(records))
+  }
+
+  /**
+   * Set or clear the activation flag for `username` (SSO 审批门). The caller
+   * (admin API) owns guards; activating only affects future logins — a
+   * pending account has never held a live session.
+   */
+  async setActivated(username: string, activated: boolean): Promise<void> {
+    const records = await this.list()
+    const record = records.find(u => u.username === username)
+    if (record === undefined) throw new Error(`unknown user "${username}"`)
+    if (activated) delete record.activated
+    else record.activated = false
     await this.credentials.set(this.ref, JSON.stringify(records))
   }
 
