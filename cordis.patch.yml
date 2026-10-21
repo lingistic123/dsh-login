@@ -44,8 +44,10 @@
         ssoClientId: S007627-RAG
         ssoClientSecret: DSH_LOGIN_SSO_CLIENT_SECRET
         ssoUidField: uid
-        # 真实端点三件套（对齐 AICO-RAG 实测；login.huawei.com/idp/* 在本环境无路由）
-        ssoAuthorizeUrl: https://uniportal.huawei.com/saaslogin1/oauth2/authorize
+        # 真实端点三件套（对齐 AICO-RAG 实测；login.huawei.com/idp/* 在本环境无路由）。
+        # scope=base.profile 直接拼在 authorize URL 上——E_10006 修复，
+        # buildAuthorizeUrl 会保留配置 URL 已有的 query 参数。
+        ssoAuthorizeUrl: https://uniportal.huawei.com/saaslogin1/oauth2/authorize?scope=base.profile
         ssoTokenUrl: https://uniportal.huawei.com/saaslogin1/oauth2/accesstoken
         ssoUserInfoUrl: https://uniportal.huawei.com/saaslogin1/oauth2/userinfo
         # 回调口径统一走域名映射形态；IDaaS 控制台需登记同一字符串
