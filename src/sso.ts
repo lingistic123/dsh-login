@@ -176,6 +176,11 @@ export async function fetchUserInfo(
   const info = (await res.json()) as unknown
   if (typeof info !== 'object' || info === null) throw new Error('userinfo response is not an object')
   const record = info as Record<string, unknown>
+  if (process.env.DSH_SSO_DEBUG) {
+    // 排障探针（默认关）：一次性 dump 到 0600 临时文件，看完即删——不进日志。
+    const { writeFileSync } = await import('node:fs')
+    writeFileSync('/tmp/dsh-sso-userinfo-debug.json', JSON.stringify(record, null, 2), { mode: 0o600 })
+  }
   if (record.errorCode) throw new Error(`userinfo errorCode ${String(record.errorCode)}`)
   return record
 }
