@@ -50,6 +50,8 @@
         ssoAuthorizeUrl: https://uniportal.huawei.com/saaslogin1/oauth2/authorize?scope=base.profile
         ssoTokenUrl: https://uniportal.huawei.com/saaslogin1/oauth2/accesstoken
         ssoUserInfoUrl: https://uniportal.huawei.com/saaslogin1/oauth2/userinfo
+        # authorize + userinfo 共用；缺 scope 在部分环境直接 E_10006
+        ssoScope: base.profile
         # 回调口径统一走域名映射形态；IDaaS 控制台需登记同一字符串
         ssoRedirectUri: http://aiinside.service.huawei.com:3080/api/auth/sso/callback
         # 工号 allowlist = admin authority for the SSO channel.

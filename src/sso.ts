@@ -41,6 +41,8 @@ export interface SsoConfig {
   ssoTokenUrl: string
   /** IDaaS userinfo endpoint. */
   ssoUserInfoUrl: string
+  /** OAuth2 scope sent on authorize + userinfo (IDaaS: 'base.profile'). */
+  ssoScope: string
   /** Pre-registered callback URL; '' derives it from the request Host. */
   ssoRedirectUri: string
   /** Userinfo field holding the 工号; falls back to standard OIDC names. */
@@ -58,6 +60,7 @@ export const SsoDefaults = {
   ssoUserInfoUrl: 'https://login.huawei.com/idp/oauth2/userinfo',
   ssoRedirectUri: '',
   ssoUidField: 'uid',
+  ssoScope: 'base.profile',
   ssoAdminUids: [],
 } satisfies Record<keyof SsoConfig, unknown>
 
@@ -153,41 +156,43 @@ export async function exchangeCode(
 }
 
 /**
- * Fetch the SSO user info with the access token. Bearer header first; a single
- * `?access_token=` retry covers IDaaS deployments whose userinfo endpoint
- * rejects the standard header.
+ * Fetch the SSO user info with the access token. POST JSON carrying
+ * client_id/access_token/scope — the shape this IDaaS deployment actually
+ * accepts (AICO-RAG 实测): a plain GET+Bearer returns 200 with an empty shell
+ * payload, which is how a login silently dies as `sso_no_uid`.
  */
 export async function fetchUserInfo(
   cfg: SsoConfig,
   accessToken: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Record<string, unknown>> {
-  let res = await fetchImpl(cfg.ssoUserInfoUrl, {
-    headers: { authorization: `Bearer ${accessToken}` },
+  const res = await fetchImpl(cfg.ssoUserInfoUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ client_id: cfg.ssoClientId, access_token: accessToken, scope: cfg.ssoScope }),
     signal: AbortSignal.timeout(10_000),
   })
-  if (res.status === 401) {
-    const url = new URL(cfg.ssoUserInfoUrl)
-    url.searchParams.set('access_token', accessToken)
-    res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) })
-  }
   if (!res.ok) throw new Error(`userinfo endpoint ${String(res.status)}`)
   const info = (await res.json()) as unknown
   if (typeof info !== 'object' || info === null) throw new Error('userinfo response is not an object')
-  return info as Record<string, unknown>
+  const record = info as Record<string, unknown>
+  if (record.errorCode) throw new Error(`userinfo errorCode ${String(record.errorCode)}`)
+  return record
 }
 
 /**
  * Resolve the 工号 from the userinfo payload: the configured field first,
- * then the standard OIDC subject claims. `uuid` is deliberately NOT a
- * fallback — silently registering a uuid as username hides a misconfigured
- * console (附加信息 must tick uid).
+ * then the standard OIDC subject claims. Values may be strings or single-item
+ * lists (AICO-RAG 同款容错). `uuid` is deliberately NOT a fallback — silently
+ * registering a uuid as username hides a misconfigured console (附加信息
+ * must tick uid).
  */
 export function resolveUid(info: Record<string, unknown>, uidField: string): string | undefined {
   const keys = uidField === '' ? ['uid'] : [uidField, 'uid']
   for (const key of [...keys, 'sub', 'username', 'preferred_username']) {
-    const value = info[key]
-    if (typeof value === 'string' && value.length > 0) return value
+    let value: unknown = info[key]
+    if (Array.isArray(value)) value = value[0]
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim()
   }
   return undefined
 }

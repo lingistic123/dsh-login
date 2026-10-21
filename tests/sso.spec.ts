@@ -304,7 +304,9 @@ function startFakeIdaas(uid = 'l00623385'): Server {
         return
       }
       if (path.startsWith('/userinfo')) {
-        if (req.headers.authorization !== 'Bearer at-123') {
+        let body: Record<string, unknown> = {}
+        try { body = JSON.parse(raw) as Record<string, unknown> } catch { /* fall through */ }
+        if (body.access_token !== 'at-123' || body.client_id !== 'S007627-RAG') {
           res.writeHead(401)
           res.end()
           return

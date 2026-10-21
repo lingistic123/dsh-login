@@ -153,6 +153,7 @@ export const Config: z<Config> = z.object({
   ssoAuthorizeUrl: z.string().default('https://login.huawei.com/idp/oauth2/authorize'),
   ssoTokenUrl: z.string().default('https://login.huawei.com/idp/oauth2/token'),
   ssoUserInfoUrl: z.string().default('https://login.huawei.com/idp/oauth2/userinfo'),
+  ssoScope: z.string().default('base.profile'),
   ssoRedirectUri: z.string().default(''),
   ssoUidField: z.string().default('uid'),
   ssoAdminUids: z.array(String).default([]),
