@@ -19,7 +19,17 @@ var Config = z.object({
   remoteWebUiPublicBaseUrl: z.string().default(""),
   quietDenials: z.boolean().default(true),
   apiBridgeAuth: z.boolean().default(true),
-  uiRoleGate: z.boolean().default(true)
+  uiRoleGate: z.boolean().default(true),
+  ssoEnabled: z.boolean().default(false),
+  ssoClientId: z.string().default(""),
+  ssoClientSecret: z.string().default("DSH_LOGIN_SSO_CLIENT_SECRET"),
+  ssoAuthorizeUrl: z.string().default("https://login.huawei.com/idp/oauth2/authorize"),
+  ssoTokenUrl: z.string().default("https://login.huawei.com/idp/oauth2/token"),
+  ssoUserInfoUrl: z.string().default("https://login.huawei.com/idp/oauth2/userinfo"),
+  ssoScope: z.string().default("base.profile"),
+  ssoRedirectUri: z.string().default(""),
+  ssoUidField: z.string().default("uid"),
+  ssoAdminUids: z.array(String).default([])
 });
 
 // src/session.ts
@@ -217,6 +227,32 @@ var UserStore = class {
     if (record === void 0) throw new Error(`unknown user "${username}"`);
     if (disabled) record.disabled = true;
     else delete record.disabled;
+    await this.credentials.set(this.ref, JSON.stringify(records));
+  }
+  /**
+   * Promote/demote `username`. The caller owns guards: the admin API checks
+   * the last-enabled-admin rule; the SSO allowlist path applies the
+   * configured list verbatim on each login (existing sessions keep their
+   * stamped flag until they re-login).
+   */
+  async setAdmin(username, isAdmin) {
+    const records = await this.list();
+    const record = records.find((u) => u.username === username);
+    if (record === void 0) throw new Error(`unknown user "${username}"`);
+    record.isAdmin = isAdmin;
+    await this.credentials.set(this.ref, JSON.stringify(records));
+  }
+  /**
+   * Set or clear the activation flag for `username` (SSO 审批门). The caller
+   * (admin API) owns guards; activating only affects future logins — a
+   * pending account has never held a live session.
+   */
+  async setActivated(username, activated) {
+    const records = await this.list();
+    const record = records.find((u) => u.username === username);
+    if (record === void 0) throw new Error(`unknown user "${username}"`);
+    if (activated) delete record.activated;
+    else record.activated = false;
     await this.credentials.set(this.ref, JSON.stringify(records));
   }
   /**
@@ -589,12 +625,19 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "session.attachment",
   "session.updateQueue",
   "session.cancel",
+  // DSH 0.2.1-rc.2 wire surface: the model picker reads the per-session model
+  // catalog; history pagination moved from `session.history` to `session.page`;
+  // the account page initializes the default model. All read-only or
+  // own-account flows.
   "session.modelCatalog",
   "session.page",
   "session.initializeDefaultModel",
   "session.canOpenWorkspacePath",
   "session.openWorkspacePath",
   "session.workspacePathApplications",
+  // DSH 0.2.1-rc.2: the subagent runtime namespace is plural `subagents` with
+  // renamed methods (`prompt`, `interruptByParent`) — the old singular
+  // `subagent.list/history/prompt/interrupt` spellings no longer exist.
   "subagents.prompt",
   "subagents.interruptByParent",
   "workspace.create",
@@ -603,21 +646,64 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "workspace.insertBefore",
   "workspace.insertSessionBefore",
   "workspace.archiveSession",
+  // DSH 0.1.6: restore one archived Session (pairs with archiveSession above).
   "workspace.unarchiveSession",
+  // DSH 0.1.7: sidebar session pinning (pinned sessions ride the workspace
+  // tree like rename/archive; both carry the workspace/session ids the guard's
+  // GUARDED_ID_FIELDS already ownership-check).
   "workspace.pinSession",
   "workspace.unpinSession",
+  // DSH 0.1.7: the job controller (`dsh-api-job-controller`, typert namespace
+  // `job`; SessionJob moved here out of `session`). `list`/`follow` are
+  // reconnect-safe streams and `kill` is the human stop button — the same
+  // trust boundary as `session.prompt`. Every request carries `sessionId`
+  // (JobFollowRequest omits it only for unowned jobs, which any caller may
+  // observe), ownership-checked through the guard's GUARDED_ID_FIELDS. Note:
+  // `jobId` must NOT be added to the guarded fields — job ids are not in the
+  // ownership sidecar and every id collected must resolve owned, which would
+  // deny legitimate kills.
   "job.list",
   "job.follow",
   "job.kill",
+  // DSH 0.1.6: the sidebar terminal (`dsh-api-terminal-controller`, typert
+  // namespace `terminal`). Every method is session-agent-scoped by the Gateway
+  // (the `agent` argument is supplied by the Gateway itself, never by the
+  // browser), so it stays inside the caller's own agent subtree — the same
+  // trust boundary as `session.prompt` (an agent can already run shell for the
+  // user). `terminal.list` addresses a session explicitly and is ownership-
+  // checked through the guard's GUARDED_ID_FIELDS (`sessionId`).
   "terminal.environment",
   "terminal.shells",
   "terminal.list",
   "terminal.create",
+  // DSH 0.2.1-alpha.3: `terminal.follow` became the bidirectional
+  // `terminal.attach` stream — uplink write/resize now ride the attach stream
+  // itself as sequenced commands, so the standalone `terminal.write` and
+  // `terminal.resize` methods no longer exist on the wire.
   "terminal.attach",
   "terminal.rename",
   "terminal.close",
+  // DSH 0.1.6-alpha.2: terminal retention across reconnects. `terminal.retain`
+  // addresses a session explicitly (`sessionId`) and is ownership-checked
+  // through GUARDED_ID_FIELDS like terminal.list. NOTE: since alpha.2 user
+  // terminals run with the execution environment's system-user permissions
+  // (no Agent sandbox), a deployment wanting stricter posture subtracts the
+  // terminal.* entries from this set before wrapping (see docs/adapt-dsh-0.1.6-alpha.2.md).
   "terminal.retain",
+  // DSH 0.2.1-alpha.3: the native remote-access client mounts on every page
+  // and opens its `remoteAccess/follow` snapshot stream. The gateway always
+  // allows this method and the answer only ever contains the caller's own
+  // grants (an owner principal gets the owner baseline), so admitting it
+  // here just keeps that mount silent instead of surfacing a denied-stream
+  // error on every page load.
   "remoteAccess.follow",
+  // DSH 0.1.6-alpha.2: the right Sidebar's document preview. The read surface
+  // of `workspaceFiles` + the Office→PDF converter (`officeToPdf`) are what
+  // every user's document/Office preview tab calls; each method's first wire
+  // argument is the scoped session identity (`workspaceFileScopeId`), resolved
+  // by the Gateway's workspaceFileScope lookup and ownership-checked through
+  // GUARDED_ID_FIELDS. Read-only: no write/convert-bytes method is exposed to
+  // the wire surface listed here.
   "workspaceFiles.read",
   "workspaceFiles.readBytes",
   "workspaceFiles.stat",
@@ -625,10 +711,18 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "workspaceFiles.changes",
   "officeToPdf.render",
   "officeToPdf.generation",
+  // DSH 0.2.1-rc.2: the skill catalog (`skills.list`, plural namespace) backs
+  // the composer's @-mention menu — a read-only catalog scoped to one session.
   "skills.list",
+  // DSH 0.2.1-rc.2: the LLM directory moved from `llm.providers`/`llm.models`
+  // to explicit method names; all three are read-only provider/model catalog
+  // reads the 模型设置页 loads for every signed-in user.
   "llm.listProviders",
   "llm.listConfigurableProviders",
   "llm.discoverModels",
+  // DSH 0.2.1-rc.2: the goal panel namespace is plural `goals` (was singular
+  // `goal`), plus the `goals.get` read. Every method addresses the caller's
+  // own session (`agentId`), ownership-checked through GUARDED_ID_FIELDS.
   "goals.create",
   "goals.edit",
   "goals.pause",
@@ -636,39 +730,22 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   "goals.complete",
   "goals.clear",
   "goals.get",
+  // DSH 0.2.1-rc.2: the references panel (`fileReferences.list`) and the
+  // composer attachment upload (`fileUploads.upload`) are ordinary-user
+  // flows — both carry the session identity the guard ownership-checks.
   "fileReferences.list",
   "fileUploads.upload",
+  // DSH 0.2.1-rc.2: the add-workspace dialog (`ui-workspace/src/client/
+  // navigation.ts`) drives `directoryPicker.pick`, and the picker page
+  // browses via `directoryPicker.list` / creates via
+  // `directoryPicker.createDirectory`. Denying these is what surfaced
+  // "not permitted for this user" on 添加工作区. NOTE the tradeoff: the
+  // picker browses the server filesystem, so deployments that want
+  // strict per-user isolation keep these admin-only and rely on
+  // `defaultWorkspace` provisioning instead.
   "directoryPicker.pick",
   "directoryPicker.list",
   "directoryPicker.createDirectory",
-  // Trust-model loosening (deployment decision): open the four config
-  // namespaces to ordinary users — preset switching, plugin management,
-  // the credential vault and the settings documents. The bridge wall
-  // admits them from this list on; remote-guard's ADMIN_ONLY_NAMESPACES
-  // and capabilities.ts's USER_DOMAINS mirror the same four.
-  "agentPresets.list",
-  "agentPresets.read",
-  "agentPresets.select",
-  "pluginManager.listPlugins",
-  "pluginManager.listBundles",
-  "pluginManager.inspect",
-  "pluginManager.setPluginEnabled",
-  "pluginManager.setBundleEnabled",
-  "pluginManager.installBundle",
-  "pluginManager.cancelInstall",
-  "pluginManager.removeBundle",
-  "pluginManager.waitForInstall",
-  "pluginManager.registries",
-  "pluginManager.listVersionExemptions",
-  "pluginManager.setVersionExemption",
-  "credentials.describe",
-  "credentials.set",
-  "credentials.unset",
-  "settings.describe",
-  "settings.mutate",
-  "settings.openSettingsDocument",
-  "settings.replace",
-  "settings.update",
   // AICO console: the resource-probe/SSH/skills-suites plugin registers one
   // exact route under /api (`openlab-console`) and multiplexes db.get/db.save/
   // db.test, probe.*, ssh.*, suites.*, skills.* over it — one key admits the
@@ -691,15 +768,18 @@ var USER_ALLOWED = /* @__PURE__ */ new Set([
   // permissionPresets.catalog is the global preset catalog. Ordinary users
   // saw conversations that were not theirs. Until each method is scoped
   // per-user in its owning service, these stay admin-only.
-  // "backflow",
-  // "dynamicCordisRunner.inventory",
-  // "permissionPresets.catalog",
-  // "schedule.catalog",
-  // "schedule.list",
-  // "messageFeedback.list",
+  // 'dynamicCordisRunner.inventory',
+  // 'permissionPresets.catalog',
+  // 'schedule.catalog',
+  // 'schedule.list',
+  // 'messageFeedback.list',
   // Re-admitted (2026-10-20): the backflow button's own channel — per-request
   // operations only (doc.upload/task.status/file.read), no cross-user listing.
-  "backflow"
+  "backflow",
+  // Re-admitted (2026-10-23): the sandbox-permission selector (对话框左下角)
+  // reads permissionPresets.catalog — the only wire method in the namespace;
+  // deployment decision to expose the preset catalog to ordinary users.
+  "permissionPresets.catalog"
 ]);
 
 // src/capabilities.ts
@@ -727,20 +807,10 @@ var USER_DOMAINS = [
   // DSH 0.1.7: the job controller (SessionJob moved here out of `session`) —
   // list/follow/kill with the request's sessionId ownership-checked by the
   // guard (USER_ALLOWED carries job.list/job.follow/job.kill).
-  "job",
-  // Trust-model loosening (deployment decision): the four config namespaces
-  // opened to ordinary users — preset switching, plugin management, the
-  // credential vault and the settings documents (mirrors remote-guard's
-  // ADMIN_ONLY_NAMESPACES trim and USER_ALLOWED's additions).
-  "credentials",
-  "settings",
-  "agentPresets",
-  "pluginManager"
+  "job"
 ];
 var ADMIN_ONLY_UI_PLUGINS = [
-  // Trust-model loosening (deployment decision): the plugin-manager panel
-  // joins the ordinary-user surface alongside the pluginManager namespace
-  // (USER_DOMAINS / ADMIN_ONLY_NAMESPACES trim).
+  "@linxin666/dsh-client-ui-plugin-manager",
   "@linxin666/dsh-client-ui-skill-explorer",
   "@linxin666/dsh-client-ui-skin-center",
   "@linxin666/dsh-client-ui-market",
@@ -775,6 +845,37 @@ function deriveCapabilities(user) {
 }
 function adminOnlyMethods() {
   return [
+    "credentials.list",
+    "credentials.get",
+    "credentials.set",
+    "credentials.delete",
+    // DSH 0.1.7: exact wire-method names of the settings controller
+    // (describe/update/replace — `settings.list`/`settings.reset` never
+    // existed on the wire; `canOpenAgentPresetDirectory` was removed in 0.1.7).
+    "settings.describe",
+    "settings.update",
+    "settings.replace",
+    "agentPreset.list",
+    "agentPreset.read",
+    "agentPreset.write",
+    // DSH 0.1.7-rc.1: the preset registry's document viewer
+    // (`agentPresets.readDocument` — view one declaration's child plugin
+    // list). Same strictly-admin posture as the rest of the namespace.
+    "agentPresets.readDocument",
+    "host.path",
+    "host.system",
+    // DSH 0.1.6-alpha.2: the native plugin manager (packages/boot/
+    // plugin-manager, typert namespace `pluginManager`) — installs, enables,
+    // disables, and removes profile bundles. Strictly admin-only: never added
+    // to USER_ALLOWED, and ADMIN_ONLY_NAMESPACES denies it for ordinary users.
+    "pluginManager.listPlugins",
+    "pluginManager.listBundles",
+    "pluginManager.inspect",
+    "pluginManager.setPluginEnabled",
+    "pluginManager.setBundleEnabled",
+    "pluginManager.installBundle",
+    "pluginManager.cancelInstall",
+    "pluginManager.removeBundle",
     // DSH 0.1.7: the account controller (typert namespace `account`) — the
     // process-wide upstream DeepSeek Platform grant: browser sign-in, cancel,
     // and revoke are whole-instance operations; even the read projections
@@ -1129,8 +1230,6 @@ function createApiBridgeAuth(deps) {
     const endpoint = endpointFromUrl(request.url);
     if (endpoint === void 0) return next();
     if (!USER_ALLOWED.has(endpoint)) {
-      // Temporary diagnostic: name the denied key and the caller's role in
-      // the Host log so a live denial can be attributed without guessing.
       console.warn(`[dsh-login] wall deny endpoint=${endpoint} user=${user.username} isAdmin=${user.isAdmin}`);
       if (deps.quietDenials) {
         await denyQuiet(request, response);
@@ -1536,6 +1635,200 @@ function createSetupHandler(deps) {
   };
 }
 
+// src/sso-api.ts
+import { randomBytes as randomBytes4 } from "node:crypto";
+import { appendFileSync, existsSync as existsSync2 } from "node:fs";
+
+// src/sso.ts
+import { randomBytes as randomBytes3 } from "node:crypto";
+import { existsSync, writeFileSync } from "node:fs";
+var SsoStateStore = class {
+  constructor(ttlSeconds = 300) {
+    this.ttlSeconds = ttlSeconds;
+  }
+  ttlSeconds;
+  store = /* @__PURE__ */ new Map();
+  /** Mint a fresh state bound to the current time window. */
+  issue() {
+    this.sweep();
+    const state = randomBytes3(24).toString("hex");
+    this.store.set(state, Date.now() + this.ttlSeconds * 1e3);
+    return state;
+  }
+  /** Accept a state exactly once; expired/unknown/replayed states are rejected. */
+  consume(state) {
+    const expiresAt = this.store.get(state);
+    if (expiresAt === void 0 || Date.now() > expiresAt) return false;
+    this.store.delete(state);
+    return true;
+  }
+  sweep() {
+    const now = Date.now();
+    for (const [state, expiresAt] of this.store) {
+      if (now > expiresAt) this.store.delete(state);
+    }
+  }
+};
+function buildAuthorizeUrl(cfg, state, redirectUri) {
+  const url = new URL(cfg.ssoAuthorizeUrl);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", cfg.ssoClientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("state", state);
+  return url.toString();
+}
+function resolveRedirectUri(cfg, req) {
+  if (cfg.ssoRedirectUri !== "") return cfg.ssoRedirectUri;
+  const host = req.headers.host ?? "localhost";
+  const forwarded = req.headers["x-forwarded-proto"];
+  const proto = typeof forwarded === "string" && forwarded.length > 0 ? forwarded.split(",")[0]?.trim() || "http" : "http";
+  return `${proto}://${host}/api/auth/sso/callback`;
+}
+async function exchangeCode(cfg, clientSecret, code, redirectUri, fetchImpl = fetch) {
+  const res = await fetchImpl(cfg.ssoTokenUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "authorization_code",
+      client_id: cfg.ssoClientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirectUri
+    }),
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (!res.ok) throw new Error(`token endpoint ${String(res.status)}`);
+  const body = await res.json();
+  if (typeof body.access_token !== "string" || body.access_token.length === 0) {
+    throw new Error("token response missing access_token");
+  }
+  return body.access_token;
+}
+async function fetchUserInfo(cfg, accessToken, fetchImpl = fetch) {
+  const res = await fetchImpl(cfg.ssoUserInfoUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_id: cfg.ssoClientId, access_token: accessToken, scope: cfg.ssoScope }),
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (!res.ok) throw new Error(`userinfo endpoint ${String(res.status)}`);
+  const info = await res.json();
+  if (typeof info !== "object" || info === null) throw new Error("userinfo response is not an object");
+  const record = info;
+  if (existsSync("/tmp/dsh-sso-debug")) {
+    writeFileSync("/tmp/dsh-sso-userinfo-debug.json", JSON.stringify(record, null, 2), { mode: 384 });
+  }
+  if (record.errorCode) throw new Error(`userinfo errorCode ${String(record.errorCode)}`);
+  return record;
+}
+function resolveUid(info, uidField) {
+  const keys = uidField === "" ? ["uid"] : [uidField, "uid"];
+  for (const key of [...keys, "sub", "username", "preferred_username"]) {
+    let value = info[key];
+    if (Array.isArray(value)) value = value[0];
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  }
+  return void 0;
+}
+
+// src/sso-api.ts
+function ssoTrace(line) {
+  try {
+    if (!existsSync2("/tmp/dsh-sso-debug")) return;
+    appendFileSync("/tmp/dsh-sso-trace.log", `${(/* @__PURE__ */ new Date()).toISOString()} ${line}
+`, { mode: 384 });
+  } catch {
+  }
+}
+function createSsoAuthorizeHandler(cfg, states) {
+  return (req, res) => {
+    const state = states.issue();
+    const redirectUri = resolveRedirectUri(cfg, req);
+    ssoTrace(`authorize -> ${redirectUri}`);
+    res.writeHead(302, { Location: buildAuthorizeUrl(cfg, state, redirectUri) });
+    res.end();
+  };
+}
+async function upsertSsoUser(users, uid, adminUids = []) {
+  const records = await users.list();
+  const existing = records.find((u) => u.username === uid);
+  const isAdmin = adminUids.length > 0 ? adminUids.includes(uid) : existing?.isAdmin === true || records.length === 0;
+  if (existing !== void 0) {
+    if (existing.isAdmin !== isAdmin) await users.setAdmin(uid, isAdmin);
+    return existing.isAdmin === isAdmin ? existing : { ...existing, isAdmin };
+  }
+  const random = randomBytes4(24).toString("hex");
+  try {
+    const record = await users.create(uid, random, isAdmin);
+    if (record.isAdmin !== isAdmin) {
+      await users.setAdmin(uid, isAdmin);
+    }
+    const activated = adminUids.length > 0 ? adminUids.includes(uid) : true;
+    if (!activated) await users.setActivated(uid, false);
+    return { ...record, isAdmin, ...activated ? {} : { activated: false } };
+  } catch {
+    const again = (await users.list()).find((u) => u.username === uid);
+    if (again !== void 0) return again;
+    throw new Error(`cannot provision sso user "${uid}"`);
+  }
+}
+function createSsoCallbackHandler(deps) {
+  return async (req, res) => {
+    const fail = (code2) => {
+      res.writeHead(302, { Location: `/login?error=${code2}` });
+      res.end();
+    };
+    const url = new URL(req.url ?? "/", "http://x");
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    const stateOk = state !== null && deps.states.consume(state);
+    ssoTrace(`callback: state_ok=${stateOk ? "y" : "n"} code_len=${code?.length ?? 0}`);
+    if (code === null || code.length === 0 || state === null || !stateOk) {
+      return fail("sso_bad_state");
+    }
+    let secret;
+    try {
+      secret = await deps.resolveSecret();
+    } catch {
+      secret = void 0;
+    }
+    if (secret === void 0 || secret.length === 0) return fail("sso_not_configured");
+    const redirectUri = resolveRedirectUri(deps.cfg, req);
+    let accessToken;
+    try {
+      accessToken = await exchangeCode(deps.cfg, secret, code, redirectUri);
+    } catch {
+      ssoTrace("exchange: FAILED");
+      return fail("sso_exchange_failed");
+    }
+    ssoTrace(`exchange: ok token_len=${accessToken.length}`);
+    let info;
+    try {
+      info = await fetchUserInfo(deps.cfg, accessToken);
+    } catch {
+      ssoTrace("userinfo: FAILED");
+      return fail("sso_userinfo_failed");
+    }
+    ssoTrace(`userinfo: keys=${Object.keys(info).sort().join(",")}`);
+    const uid = resolveUid(info, deps.cfg.ssoUidField);
+    if (uid === void 0) {
+      console.warn("sso_no_uid: userinfo field names: %j", Object.keys(info).sort());
+      return fail("sso_no_uid");
+    }
+    let record;
+    try {
+      record = await upsertSsoUser(deps.users, uid, deps.cfg.ssoAdminUids);
+    } catch {
+      return fail("sso_provision_failed");
+    }
+    if (record.activated === false) return fail("sso_pending_activation");
+    const session = deps.store.create(record.username, record.isAdmin);
+    res.setHeader("Set-Cookie", buildCookieHeader(session.token, deps.sessionTtl));
+    res.writeHead(302, { Location: "/" });
+    res.end();
+  };
+}
+
 // src/admin-api.ts
 function requireSession(deps, req) {
   const token = extractSessionToken(req.headers.cookie);
@@ -1594,6 +1887,7 @@ function createAdminRoutes(deps) {
           isAdmin: record.isAdmin,
           lastLoginAt: record.lastLoginAt ?? null,
           disabled: record.disabled === true,
+          activated: record.activated !== false,
           onlineSessions: online.get(record.username) ?? 0
         }))
       });
@@ -1693,6 +1987,21 @@ function createAdminRoutes(deps) {
     if (body.disabled) deps.store.revokeAllFor(target);
     return sendJson(res, 200, { ok: true });
   } };
+  const userActivate = { kind: "exact", path: "/api/auth/admin/users/activate", handler: async (req, res) => {
+    if (requireAdmin(deps, req, res) === void 0) return;
+    const body = await readJsonObject(req);
+    if (body === null || typeof body.username !== "string" || typeof body.activated !== "boolean") {
+      return sendJson(res, 400, { error: "bad request" });
+    }
+    try {
+      await deps.users.setActivated(body.username, body.activated);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("unknown user")) return sendJson(res, 404, { error: "unknown user" });
+      return sendJson(res, 400, { error: "bad request" });
+    }
+    return sendJson(res, 200, { ok: true });
+  } };
   const setting = deps.defaultWorkspaceSetting;
   const settingRoute = setting === void 0 ? void 0 : { kind: "exact", path: "/api/auth/admin/settings/default-workspace", handler: async (req, res) => {
     if (requireAdmin(deps, req, res) === void 0) return;
@@ -1715,7 +2024,7 @@ function createAdminRoutes(deps) {
     if (deps.onRemoteWebUiApply !== void 0) applied = await deps.onRemoteWebUiApply(body.enabled);
     return sendJson(res, 200, { ok: true, enabled: remoteSetting.get(), applied });
   } };
-  const routes = [me, capabilitiesRoute, usersRoute, userPassword, userRemove, userDisable];
+  const routes = [me, capabilitiesRoute, usersRoute, userPassword, userRemove, userDisable, userActivate];
   if (hostsRoute !== void 0) routes.push(hostsRoute);
   if (settingRoute !== void 0) routes.push(settingRoute);
   if (remoteSettingRoute !== void 0) routes.push(remoteSettingRoute);
@@ -2124,6 +2433,38 @@ var BASE_CSS = `
       margin-bottom: 10px;
     }
 
+    /* ---- SSO channel anchor (shown when config.ssoEnabled) ---- */
+    .sso-link {
+      display: block;
+      width: 100%;
+      padding: 11px;
+      margin-bottom: 12px;
+      background: var(--lt-inset);
+      border: 1px solid var(--lt-line);
+      border-radius: 9px;
+      color: var(--lt-text);
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: center;
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .sso-link:hover { border-color: var(--accent); background: #eef2fd; }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0 16px;
+      color: var(--lt-muted);
+      font-size: 0.72rem;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--lt-line);
+    }
+
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
         animation: none !important;
@@ -2204,12 +2545,14 @@ function renderPage(opts) {
 </body>
 </html>`;
 }
-function renderLoginPage() {
+function renderLoginPage(ssoEnabled = false) {
   return renderPage({
     title: "DSH \u767B\u5F55",
     heading: "\u767B\u5F55 DSH",
     subtitle: "\u591A\u7528\u6237\u7F51\u5173\uFF1A\u6BCF\u4EBA\u72EC\u7ACB\u4F1A\u8BDD\uFF0C\u6743\u9650\u5404\u5F52\u5176\u4F4D\u3002",
     fields: `
+        ${ssoEnabled ? `<a class="sso-link" href="/api/auth/sso/authorize">\u4F7F\u7528\u534E\u4E3A\u5185\u7F51 SSO \u767B\u5F55</a>
+        <div class="divider"><span>\u6216\u4F7F\u7528\u8D26\u53F7\u5BC6\u7801</span></div>` : ""}
         <div class="field">
           <input type="text" name="username" id="username" placeholder="\u7528\u6237\u540D"
             autocomplete="username" autofocus required>
@@ -2225,6 +2568,22 @@ function renderLoginPage() {
     var password = document.getElementById('password');
     var error = document.getElementById('error');
     var submit = document.getElementById('submit');
+
+    var ssoErrors = {
+      sso_bad_state: 'SSO \u56DE\u8C03\u6821\u9A8C\u5931\u8D25\uFF0C\u8BF7\u4ECE\u767B\u5F55\u9875\u91CD\u65B0\u53D1\u8D77',
+      sso_not_configured: 'SSO \u672A\u914D\u7F6E\uFF1A\u8BF7\u5148\u5728\u51ED\u636E\u4E2D\u5199\u5165 client secret',
+      sso_exchange_failed: 'SSO \u6362\u53D6\u4EE4\u724C\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5',
+      sso_userinfo_failed: 'SSO \u83B7\u53D6\u7528\u6237\u4FE1\u606F\u5931\u8D25\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5',
+      sso_no_uid: 'SSO \u672A\u8FD4\u56DE\u5DE5\u53F7\uFF0C\u8BF7\u5728 IDaaS \u63A7\u5236\u53F0\u52FE\u9009 uid \u9644\u52A0\u4FE1\u606F',
+      sso_provision_failed: 'SSO \u81EA\u52A8\u6CE8\u518C\u5931\u8D25\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458',
+      sso_pending_activation: '\u5DE5\u53F7\u5DF2\u767B\u8BB0\uFF0C\u7B49\u5F85\u7BA1\u7406\u5458\u6FC0\u6D3B\u540E\u518D\u8BD5',
+    };
+    var params = new URLSearchParams(window.location.search);
+    var errCode = params.get('error');
+    if (errCode) {
+      error.textContent = ssoErrors[errCode] ?? '\u767B\u5F55\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5';
+      history.replaceState(null, '', '/login');
+    }
 
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -2401,6 +2760,12 @@ function provideWebRuntime(ctx, trustedHosts) {
 
 // src/remote-guard.ts
 var ADMIN_ONLY_NAMESPACES = /* @__PURE__ */ new Set([
+  "credentials",
+  "settings",
+  "agentPresets",
+  // DSH 0.1.6-alpha.2: the native plugin manager installs, enables, disables,
+  // and removes profile bundles — never reachable by an ordinary user.
+  "pluginManager",
   // DSH 0.1.7-alpha.2: the account controller (`namespace: 'account'`) drives
   // the process-wide upstream DeepSeek Platform grant — startSignIn/signOut/
   // cancelSignIn rebind or revoke THE instance's account — and even the read
@@ -2569,7 +2934,7 @@ function apply(ctx, config) {
     kind: "exact",
     path: "/login",
     handler: async (_req, res) => {
-      const html = await users.isEmpty() ? renderSetupPage() : renderLoginPage();
+      const html = await users.isEmpty() ? renderSetupPage() : renderLoginPage(config.ssoEnabled);
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(html);
     }
@@ -2591,6 +2956,23 @@ function apply(ctx, config) {
     path: "/api/auth/logout",
     handler: createLogoutHandler(store)
   }), "dsh-login: /api/auth/logout");
+  if (config.ssoEnabled && config.ssoClientId !== "") {
+    const states = new SsoStateStore();
+    const resolveSecret = async () => {
+      const resolved = await ctx.credentials.resolve(credentialRef(config.ssoClientSecret));
+      return resolved?.value;
+    };
+    ctx.effect(() => ctx.webServer.register({
+      kind: "exact",
+      path: "/api/auth/sso/authorize",
+      handler: createSsoAuthorizeHandler(gatewayConfig, states)
+    }), "dsh-login: /api/auth/sso/authorize");
+    ctx.effect(() => ctx.webServer.register({
+      kind: "exact",
+      path: "/api/auth/sso/callback",
+      handler: createSsoCallbackHandler({ cfg: gatewayConfig, users, store, sessionTtl: config.sessionTtl, states, resolveSecret })
+    }), "dsh-login: /api/auth/sso/callback");
+  }
   ctx.effect(() => ctx.webServer.register({
     kind: "exact",
     path: "/logout",

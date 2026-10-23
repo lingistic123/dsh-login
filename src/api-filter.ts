@@ -145,6 +145,10 @@ export const USER_ALLOWED: ReadonlySet<string> = new Set([
   // Re-admitted (2026-10-20): the backflow button's own channel — per-request
   // operations only (doc.upload/task.status/file.read), no cross-user listing.
   'backflow',
+  // Re-admitted (2026-10-23): the sandbox-permission selector (对话框左下角)
+  // reads permissionPresets.catalog — the only wire method in the namespace;
+  // deployment decision to expose the preset catalog to ordinary users.
+  'permissionPresets.catalog',
 ])
 
 /** May an ordinary (non-admin) user call this wire method? (Information surface only.) */
